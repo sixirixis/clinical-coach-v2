@@ -1,0 +1,11 @@
+backend
+.github
+.git
+.vscode
+.idea
+check_page.mjs
+node_modules
+dist
+backend/node_modules
+backend/dist
+*.log

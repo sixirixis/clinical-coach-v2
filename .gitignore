@@ -31,3 +31,4 @@ backend/.env.*
 *.sln
 *.sw?
 .vercel
+check_page.mjs
