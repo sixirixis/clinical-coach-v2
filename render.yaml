@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: clinical-coach-backend
+    runtime: node
+    rootDir: backend
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: info
+      - key: STORE_TRANSCRIPTS
+        value: "true"
+      - key: STORE_AUDIO
+        value: "false"
+      - key: ENABLE_LLM_REVIEW
+        value: "true"
+      - key: DEFAULT_TIMEZONE
+        value: UTC
+      - key: REVIEW_MODEL
+        value: gpt-4.1-mini
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: VAPI_PRIVATE_KEY
+        sync: false
+      - key: VAPI_WEBHOOK_SECRET
+        sync: false
+      - key: VAPI_WEBHOOK_BEARER_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SESSION_ENCRYPTION_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
