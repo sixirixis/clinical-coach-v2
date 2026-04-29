@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Vapi from '@vapi-ai/web'
+import type Vapi from '@vapi-ai/web'
 import './App.css'
 import { analyzeTranscript, formatTimestamp, metricLabel, type FeedbackItem, type SessionInsight, type TranscriptEntry } from './lib/feedback'
 
@@ -77,6 +77,18 @@ const statusCopy: Record<SessionStatus, string> = {
   error: 'Issue detected',
 }
 
+const resolveVapiConstructor = (moduleValue: unknown) => {
+  const candidates = [
+    (moduleValue as { default?: unknown } | undefined)?.default,
+    (moduleValue as { default?: { default?: unknown } } | undefined)?.default?.default,
+    moduleValue,
+  ]
+
+  return candidates.find((candidate) => typeof candidate === 'function') as
+    | (new (apiToken: string) => Vapi)
+    | undefined
+}
+
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname))
   const [signedInUser, setSignedInUser] = useState<string | null>(() => getStoredUser())
@@ -152,118 +164,123 @@ function App() {
     return () => window.clearInterval(interval)
   }, [status, startedAt])
 
-  useEffect(() => {
-    if (!DEFAULT_PUBLIC_KEY) {
-      vapiRef.current = null
+  const appendTranscriptEntry = (role: TranscriptRole, text: string) => {
+    if (!text) return
+
+    setTranscript((current) => {
+      const previous = current[current.length - 1]
+      if (previous && previous.role === role && previous.text === text) return current
+
+      return [
+        ...current,
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role,
+          text,
+          timestamp: new Date().toISOString(),
+        },
+      ]
+    })
+  }
+
+  const finalizeArchive = () => {
+    if (archiveFinalizedRef.current) return
+    archiveFinalizedRef.current = true
+
+    const endedAt = new Date().toISOString()
+    const snapshot = transcriptRef.current
+    if (!snapshot.length) return
+
+    const archivedSession: ArchivedSession = {
+      id: `session-${Date.now()}`,
+      startedAt: startedAtRef.current ?? endedAt,
+      endedAt,
+      durationSeconds: sessionSecondsRef.current,
+      transcript: snapshot,
+      insight: insightRef.current,
+    }
+
+    setArchive((current) => [archivedSession, ...current].slice(0, 8))
+  }
+
+  const handleVapiMessage = (message: any) => {
+    const messageType = cleanText(message?.type)
+
+    if (messageType === 'transcript' || messageType.startsWith('transcript[')) {
+      const role = normalizeRole(message?.role)
+      const text = cleanText(message?.transcript ?? message?.text ?? message?.message)
+      const isFinal = message?.transcriptType === 'final' || messageType.includes('final')
+
+      if (!text) return
+
+      if (isFinal) {
+        if (role === 'user' || role === 'assistant') {
+          setPartialCaptions((current) => ({ ...current, [role]: '' }))
+        }
+        appendTranscriptEntry(role, text)
+      } else if (role === 'user' || role === 'assistant') {
+        setPartialCaptions((current) => ({ ...current, [role]: text }))
+      }
       return
     }
 
-    const client = new Vapi(DEFAULT_PUBLIC_KEY)
-    vapiRef.current = client
-
-    const appendTranscriptEntry = (role: TranscriptRole, text: string) => {
-      if (!text) return
-
-      setTranscript((current) => {
-        const previous = current[current.length - 1]
-        if (previous && previous.role === role && previous.text === text) return current
-
-        return [
-          ...current,
-          {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            role,
-            text,
-            timestamp: new Date().toISOString(),
-          },
-        ]
-      })
+    if (messageType === 'assistant.speechStarted') {
+      const assistantText = cleanText(message?.text)
+      if (assistantText) {
+        setPartialCaptions((current) => ({ ...current, assistant: assistantText }))
+      }
+      return
     }
 
-    const finalizeArchive = () => {
-      if (archiveFinalizedRef.current) return
-      archiveFinalizedRef.current = true
+    if (messageType === 'status-update' && message?.status === 'ended') {
+      setStatus('ended')
+      finalizeArchive()
+    }
+  }
 
-      const endedAt = new Date().toISOString()
-      const snapshot = transcriptRef.current
-      if (!snapshot.length) return
+  const handleVapiError = (error: any) => {
+    setLastError(cleanText(error?.message) || 'The voice session hit a snag.')
+    setStatus('error')
+  }
 
-      const archivedSession: ArchivedSession = {
-        id: `session-${Date.now()}`,
-        startedAt: startedAtRef.current ?? endedAt,
-        endedAt,
-        durationSeconds: sessionSecondsRef.current,
-        transcript: snapshot,
-        insight: insightRef.current,
-      }
-
-      setArchive((current) => [archivedSession, ...current].slice(0, 8))
+  const ensureVapiClient = async () => {
+    if (vapiRef.current) return vapiRef.current
+    if (!DEFAULT_PUBLIC_KEY) {
+      throw new Error('The preset voice agent is not configured yet.')
     }
 
-    const handleMessage = (message: any) => {
-      const messageType = cleanText(message?.type)
+    const moduleValue = await import('@vapi-ai/web')
+    const VapiConstructor = resolveVapiConstructor(moduleValue)
 
-      if (messageType === 'transcript' || messageType.startsWith('transcript[')) {
-        const role = normalizeRole(message?.role)
-        const text = cleanText(message?.transcript ?? message?.text ?? message?.message)
-        const isFinal = message?.transcriptType === 'final' || messageType.includes('final')
-
-        if (!text) return
-
-        if (isFinal) {
-          if (role === 'user' || role === 'assistant') {
-            setPartialCaptions((current) => ({ ...current, [role]: '' }))
-          }
-          appendTranscriptEntry(role, text)
-        } else if (role === 'user' || role === 'assistant') {
-          setPartialCaptions((current) => ({ ...current, [role]: text }))
-        }
-        return
-      }
-
-      if (messageType === 'assistant.speechStarted') {
-        const assistantText = cleanText(message?.text)
-        if (assistantText) {
-          setPartialCaptions((current) => ({ ...current, assistant: assistantText }))
-        }
-        return
-      }
-
-      if (messageType === 'status-update' && message?.status === 'ended') {
-        setStatus('ended')
-        finalizeArchive()
-      }
+    if (!VapiConstructor) {
+      throw new Error('The voice client failed to load correctly. Refresh and try again.')
     }
 
-    const handleError = (error: any) => {
-      setLastError(cleanText(error?.message) || 'The voice session hit a snag.')
-      setStatus('error')
-    }
-
+    const client = new VapiConstructor(DEFAULT_PUBLIC_KEY)
     client.on('call-start', () => {
       setStatus('active')
       setLastError('')
     })
-
     client.on('call-end', () => {
       setStatus('ended')
       setPartialCaptions({ user: '', assistant: '' })
       finalizeArchive()
     })
-
     client.on('volume-level', (level: number) => {
       setVolumeLevel(Math.max(0, Math.min(100, Math.round(level * 100))))
     })
+    client.on('message', handleVapiMessage)
+    client.on('error', handleVapiError)
+    client.on('call-start-failed', handleVapiError)
 
-    client.on('message', handleMessage)
-    client.on('error', handleError)
-    client.on('call-start-failed', handleError)
+    vapiRef.current = client
+    return client
+  }
 
+  useEffect(() => {
     return () => {
-      client.removeAllListeners()
-      if (vapiRef.current === client) {
-        vapiRef.current = null
-      }
+      vapiRef.current?.removeAllListeners()
+      vapiRef.current = null
     }
   }, [])
 
@@ -306,12 +323,6 @@ function App() {
       return
     }
 
-    if (!vapiRef.current) {
-      setLastError('The voice client is not ready yet. Refresh and try again.')
-      setStatus('error')
-      return
-    }
-
     archiveFinalizedRef.current = false
     setStatus('connecting')
     setTranscript([])
@@ -323,7 +334,8 @@ function App() {
     setStartedAt(new Date().toISOString())
 
     try {
-      await vapiRef.current.start(DEFAULT_ASSISTANT_ID, {
+      const client = await ensureVapiClient()
+      await client.start(DEFAULT_ASSISTANT_ID, {
         variableValues: {
           learnerName: signedInUser ?? DEMO_ACCOUNT.name,
         },
