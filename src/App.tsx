@@ -7,7 +7,7 @@ type SessionStatus = 'idle' | 'connecting' | 'active' | 'ended' | 'error'
 type TranscriptRole = TranscriptEntry['role']
 type ScenarioAvailability = 'live' | 'placeholder'
 type ScenarioRoute = `/agents/${string}`
-type AppRoute = '/' | '/sign-in' | '/simulate' | ScenarioRoute
+type AppRoute = '/' | '/sign-in' | '/simulate' | '/admin/sign-in' | '/admin' | ScenarioRoute
 
 type ArchivedSession = {
   id: string
@@ -41,14 +41,34 @@ type EntryFeedbackGroup = {
   negative: FeedbackItem[]
 }
 
+type AdminAgentRecord = {
+  slug: string
+  title: string
+  status: 'Live' | 'Pilot' | 'Draft'
+  assistantId: string
+  publicKeyLabel: string
+  scriptNotes: string
+  openingLine: string
+  persona: string
+  difficulty: ScenarioDefinition['difficulty']
+  lastEditedAt: string
+}
+
 const ARCHIVE_STORAGE_KEY = 'vapi-coaching-archive'
 const AUTH_STORAGE_KEY = 'clinical-coach-auth'
+const ADMIN_AUTH_STORAGE_KEY = 'clinical-coach-admin-auth'
+const ADMIN_AGENT_STORAGE_KEY = 'clinical-coach-admin-agents'
 const DEFAULT_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY ?? ''
 const DEFAULT_ASSISTANT_ID = import.meta.env.VITE_VAPI_ASSISTANT_ID ?? ''
 const DEMO_ACCOUNT: DemoAccount = {
   email: 'learner@clinicalcoach.app',
   password: 'CoachDemo2026!',
   name: 'Demo Learner',
+}
+const ADMIN_ACCOUNT: DemoAccount = {
+  email: 'admin@clinicalcoach.app',
+  password: 'AdminConsole2026!',
+  name: 'Admin Test User',
 }
 
 const SCENARIOS: ScenarioDefinition[] = [
@@ -184,7 +204,41 @@ const getStoredUser = () => {
   return window.sessionStorage.getItem(AUTH_STORAGE_KEY)
 }
 
+const getStoredAdmin = () => {
+  if (typeof window === 'undefined') return null
+  return window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY)
+}
+
+const createDefaultAdminAgents = (): AdminAgentRecord[] =>
+  SCENARIOS.map((scenario, index) => ({
+    slug: scenario.slug,
+    title: scenario.title,
+    status: scenario.availability === 'live' ? 'Live' : index % 2 === 0 ? 'Pilot' : 'Draft',
+    assistantId: scenario.slug === 'angry-family-member' ? DEFAULT_ASSISTANT_ID || 'preset-live-assistant' : `mock-${scenario.slug}`,
+    publicKeyLabel: scenario.slug === 'angry-family-member' ? (DEFAULT_PUBLIC_KEY ? 'Connected env key' : 'Env key missing') : 'Shared coaching workspace',
+    scriptNotes: `Goal: ${scenario.learningGoals[0]}. Preserve a ${scenario.persona.toLowerCase()} tone and keep the opening beat clinically believable.`,
+    openingLine: scenario.openingLine,
+    persona: scenario.persona,
+    difficulty: scenario.difficulty,
+    lastEditedAt: new Date(Date.now() - index * 36e5).toISOString(),
+  }))
+
+const getStoredAdminAgents = (): AdminAgentRecord[] => {
+  if (typeof window === 'undefined') return createDefaultAdminAgents()
+
+  try {
+    const raw = window.localStorage.getItem(ADMIN_AGENT_STORAGE_KEY)
+    if (!raw) return createDefaultAdminAgents()
+    const parsed = JSON.parse(raw) as AdminAgentRecord[]
+    return Array.isArray(parsed) && parsed.length ? parsed : createDefaultAdminAgents()
+  } catch {
+    return createDefaultAdminAgents()
+  }
+}
+
 const getRouteFromPath = (pathname: string): AppRoute => {
+  if (pathname.startsWith('/admin/sign-in')) return '/admin/sign-in'
+  if (pathname.startsWith('/admin')) return '/admin'
   if (pathname.startsWith('/sign-in')) return '/sign-in'
   if (pathname.startsWith('/simulate')) return '/simulate'
 
@@ -253,12 +307,22 @@ const getSpeakerLabel = (role: TranscriptRole, learnerLabel: string | null) => {
   return 'System'
 }
 
+const getAdminAgentCounts = (agents: AdminAgentRecord[]) => ({
+  live: agents.filter((agent) => agent.status === 'Live').length,
+  pilot: agents.filter((agent) => agent.status === 'Pilot').length,
+  draft: agents.filter((agent) => agent.status === 'Draft').length,
+})
+
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname))
   const [signedInUser, setSignedInUser] = useState<string | null>(() => getStoredUser())
+  const [adminUser, setAdminUser] = useState<string | null>(() => getStoredAdmin())
   const [email, setEmail] = useState(DEMO_ACCOUNT.email)
   const [password, setPassword] = useState(DEMO_ACCOUNT.password)
+  const [adminEmail, setAdminEmail] = useState(ADMIN_ACCOUNT.email)
+  const [adminPassword, setAdminPassword] = useState(ADMIN_ACCOUNT.password)
   const [signInError, setSignInError] = useState('')
+  const [adminSignInError, setAdminSignInError] = useState('')
   const [status, setStatus] = useState<SessionStatus>('idle')
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [partialCaptions, setPartialCaptions] = useState<{ user: string; assistant: string }>({ user: '', assistant: '' })
@@ -269,6 +333,9 @@ function App() {
   const [startedAt, setStartedAt] = useState<string | null>(null)
   const [archive, setArchive] = useState<ArchivedSession[]>(() => getStoredArchive())
   const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null)
+  const [adminAgents, setAdminAgents] = useState<AdminAgentRecord[]>(() => getStoredAdminAgents())
+  const [selectedAdminSlug, setSelectedAdminSlug] = useState<string>(() => SCENARIOS[0].slug)
+  const [adminNotice, setAdminNotice] = useState('')
 
   const vapiRef = useRef<Vapi | null>(null)
   const transcriptRef = useRef<TranscriptEntry[]>([])
@@ -278,12 +345,41 @@ function App() {
   const archiveFinalizedRef = useRef(false)
 
   const isSignedIn = Boolean(signedInUser)
+  const isAdminSignedIn = Boolean(adminUser)
   const insight = useMemo(() => analyzeTranscript(transcript), [transcript])
   const totalFlags = insight.positive.length + insight.negative.length
   const selectedScenario = useMemo(
     () => SCENARIOS.find((scenario) => route === getScenarioRoute(scenario.slug)) ?? null,
     [route],
   )
+  const adminCounts = useMemo(() => getAdminAgentCounts(adminAgents), [adminAgents])
+  const selectedAdminAgent = useMemo(
+    () => adminAgents.find((agent) => agent.slug === selectedAdminSlug) ?? adminAgents[0] ?? null,
+    [adminAgents, selectedAdminSlug],
+  )
+  const averageMetrics = useMemo(() => {
+    if (!archive.length) {
+      return { empathy: 0, deEscalation: 0, clarity: 0, flags: 0 }
+    }
+
+    const totals = archive.reduce(
+      (accumulator, session) => ({
+        empathy: accumulator.empathy + session.insight.metrics.empathy,
+        deEscalation: accumulator.deEscalation + session.insight.metrics.deEscalation,
+        clarity: accumulator.clarity + session.insight.metrics.clarity,
+        flags: accumulator.flags + session.insight.negative.length,
+      }),
+      { empathy: 0, deEscalation: 0, clarity: 0, flags: 0 },
+    )
+
+    return {
+      empathy: Math.round(totals.empathy / archive.length),
+      deEscalation: Math.round(totals.deEscalation / archive.length),
+      clarity: Math.round(totals.clarity / archive.length),
+      flags: Number((totals.flags / archive.length).toFixed(1)),
+    }
+  }, [archive])
+  const latestSession = archive[0] ?? null
 
   const navigate = (nextRoute: AppRoute) => {
     window.history.pushState({}, '', nextRoute === '/' ? '/' : nextRoute)
@@ -301,6 +397,12 @@ function App() {
       navigate('/sign-in')
     }
   }, [isSignedIn, route])
+
+  useEffect(() => {
+    if (route === '/admin' && !isAdminSignedIn) {
+      navigate('/admin/sign-in')
+    }
+  }, [isAdminSignedIn, route])
 
   useEffect(() => {
     transcriptRef.current = transcript
@@ -321,6 +423,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archive))
   }, [archive])
+
+  useEffect(() => {
+    window.localStorage.setItem(ADMIN_AGENT_STORAGE_KEY, JSON.stringify(adminAgents))
+  }, [adminAgents])
 
   useEffect(() => {
     if (status !== 'active' || !startedAt) return
@@ -458,7 +564,7 @@ function App() {
     event.preventDefault()
 
     if (email.trim().toLowerCase() !== DEMO_ACCOUNT.email || password !== DEMO_ACCOUNT.password) {
-      setSignInError('Use the demo account shown on this page.')
+      setSignInError('Use the demo learner account shown on this page.')
       return
     }
 
@@ -466,6 +572,20 @@ function App() {
     setSignedInUser(DEMO_ACCOUNT.name)
     setSignInError('')
     navigate('/simulate')
+  }
+
+  const handleAdminSignIn = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (adminEmail.trim().toLowerCase() !== ADMIN_ACCOUNT.email || adminPassword !== ADMIN_ACCOUNT.password) {
+      setAdminSignInError('Use the admin test account shown on this page.')
+      return
+    }
+
+    window.sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, ADMIN_ACCOUNT.name)
+    setAdminUser(ADMIN_ACCOUNT.name)
+    setAdminSignInError('')
+    navigate('/admin')
   }
 
   const handleSignOut = async () => {
@@ -483,6 +603,12 @@ function App() {
     setSessionSeconds(0)
     setStartedAt(null)
     setLastError('')
+    navigate('/')
+  }
+
+  const handleAdminSignOut = () => {
+    window.sessionStorage.removeItem(ADMIN_AUTH_STORAGE_KEY)
+    setAdminUser(null)
     navigate('/')
   }
 
@@ -543,6 +669,52 @@ function App() {
     setExpandedArchiveId((current) => (current === sessionId ? null : sessionId))
   }
 
+  const updateAdminAgent = (slug: string, updates: Partial<AdminAgentRecord>) => {
+    setAdminAgents((current) =>
+      current.map((agent) =>
+        agent.slug === slug
+          ? {
+              ...agent,
+              ...updates,
+              lastEditedAt: new Date().toISOString(),
+            }
+          : agent,
+      ),
+    )
+  }
+
+  const resetAdminAgents = () => {
+    const defaults = createDefaultAdminAgents()
+    setAdminAgents(defaults)
+    setSelectedAdminSlug(defaults[0]?.slug ?? '')
+    setAdminNotice('Reset the admin workspace to the seeded frontend defaults.')
+  }
+
+  const saveAdminNote = (message: string) => {
+    setAdminNotice(message)
+    window.setTimeout(() => {
+      setAdminNotice((current) => (current === message ? '' : current))
+    }, 2800)
+  }
+
+  const handleScriptNoteChange = (value: string) => {
+    if (!selectedAdminAgent) return
+    updateAdminAgent(selectedAdminAgent.slug, { scriptNotes: value })
+  }
+
+  const handleOpeningLineChange = (value: string) => {
+    if (!selectedAdminAgent) return
+    updateAdminAgent(selectedAdminAgent.slug, { openingLine: value })
+  }
+
+  const cycleAgentStatus = () => {
+    if (!selectedAdminAgent) return
+    const order: AdminAgentRecord['status'][] = ['Draft', 'Pilot', 'Live']
+    const nextStatus = order[(order.indexOf(selectedAdminAgent.status) + 1) % order.length]
+    updateAdminAgent(selectedAdminAgent.slug, { status: nextStatus })
+    saveAdminNote(`${selectedAdminAgent.title} moved to ${nextStatus}.`)
+  }
+
   const renderScenarioLibrary = (currentSlug?: string) => (
     <div className="scenario-grid">
       {SCENARIOS.filter((scenario) => scenario.slug !== currentSlug).map((scenario) => (
@@ -581,10 +753,13 @@ function App() {
         </p>
         <div className="hero-actions">
           <button className="button primary" onClick={() => navigate('/sign-in')}>
-            Sign in
+            Learner sign in
+          </button>
+          <button className="button secondary" onClick={() => navigate('/admin/sign-in')}>
+            Admin console
           </button>
           {isSignedIn ? (
-            <button className="button secondary" onClick={() => navigate('/simulate')}>
+            <button className="button ghost" onClick={() => navigate('/simulate')}>
               Go to simulation
             </button>
           ) : null}
@@ -597,12 +772,12 @@ function App() {
           <p>Run a voice scenario, speak naturally, then review the transcript and flagged feedback.</p>
         </article>
         <article className="info-card">
-          <h2>What is preset</h2>
-          <p>The voice agent is already configured in the app, so learners do not need to enter any Vapi details.</p>
+          <h2>What admins do</h2>
+          <p>Monitor scenario readiness, inspect the Vapi connection state, and make minor script changes without pretending it is a full CMS.</p>
         </article>
         <article className="info-card">
           <h2>What is next</h2>
-          <p>Additional scenario pages are now stubbed in so the app can grow into a proper roleplay library instead of a one-hit wonder.</p>
+          <p>Separate admin and learner entry points now make the app feel like a product instead of a brave little demo stitched together with hope.</p>
         </article>
       </div>
 
@@ -621,9 +796,9 @@ function App() {
   const renderSignInPage = () => (
     <section className="auth-page">
       <div className="auth-panel">
-        <span className="eyebrow">Sign in</span>
+        <span className="eyebrow">Learner sign in</span>
         <h1>Training access</h1>
-        <p className="hero-copy">Use the demo account below to access the preset simulation.</p>
+        <p className="hero-copy">Use the demo learner account below to access the preset simulation.</p>
 
         <div className="demo-account">
           <div>
@@ -656,6 +831,54 @@ function App() {
           <div className="hero-actions auth-actions">
             <button className="button primary" type="submit">
               Continue to simulation
+            </button>
+            <button className="button secondary" type="button" onClick={() => navigate('/')}>
+              Back
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  )
+
+  const renderAdminSignInPage = () => (
+    <section className="auth-page">
+      <div className="auth-panel">
+        <span className="eyebrow">Admin sign in</span>
+        <h1>Voice agent control room</h1>
+        <p className="hero-copy">Use the frontend-only admin test account to manage agent metadata, script notes, and dashboard visibility.</p>
+
+        <div className="demo-account">
+          <div>
+            <span>Admin account</span>
+            <strong>{ADMIN_ACCOUNT.email}</strong>
+          </div>
+          <div>
+            <span>Password</span>
+            <strong>{ADMIN_ACCOUNT.password}</strong>
+          </div>
+        </div>
+
+        <form className="auth-form" onSubmit={handleAdminSignIn}>
+          <label>
+            <span>Email</span>
+            <input value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} autoComplete="username" />
+          </label>
+          <label>
+            <span>Password</span>
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(event) => setAdminPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </label>
+
+          {adminSignInError ? <div className="alert error">{adminSignInError}</div> : null}
+
+          <div className="hero-actions auth-actions">
+            <button className="button primary" type="submit">
+              Open admin console
             </button>
             <button className="button secondary" type="button" onClick={() => navigate('/')}>
               Back
@@ -938,6 +1161,174 @@ function App() {
     </section>
   )
 
+  const renderAdminPage = () => (
+    <section className="simulation-page admin-page">
+      <div className="simulation-header panel admin-hero">
+        <div>
+          <span className="eyebrow">Administrator</span>
+          <h1>Voice agent admin console</h1>
+          <p className="hero-copy">
+            Signed in as {adminUser}. This frontend-only workspace lets you manage agent metadata, minor script edits, and a quick learner dashboard overview without pretending the backend exists when it doesn’t.
+          </p>
+        </div>
+        <div className="simulation-actions">
+          <div className="status-pill status-active">Frontend preview</div>
+          <button className="button secondary" onClick={handleAdminSignOut}>
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <div className="card-grid compact summary-grid">
+        <article className="info-card">
+          <span className="mini-stat">Agents live</span>
+          <strong>{adminCounts.live}</strong>
+        </article>
+        <article className="info-card">
+          <span className="mini-stat">Pilots / drafts</span>
+          <strong>
+            {adminCounts.pilot} / {adminCounts.draft}
+          </strong>
+        </article>
+        <article className="info-card">
+          <span className="mini-stat">Learner sessions</span>
+          <strong>{archive.length}</strong>
+        </article>
+      </div>
+
+      <div className="workspace admin-workspace">
+        <div className="panel admin-agent-list-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">Voice agents</span>
+              <h2>Manage scenarios</h2>
+            </div>
+            <button className="button ghost" onClick={resetAdminAgents}>
+              Reset defaults
+            </button>
+          </div>
+
+          <div className="admin-agent-list">
+            {adminAgents.map((agent) => (
+              <button
+                key={agent.slug}
+                className={`admin-agent-row ${selectedAdminAgent?.slug === agent.slug ? 'selected' : ''}`}
+                onClick={() => setSelectedAdminSlug(agent.slug)}
+              >
+                <div>
+                  <strong>{agent.title}</strong>
+                  <span>{agent.persona}</span>
+                </div>
+                <span className={`scenario-status admin-status ${agent.status.toLowerCase()}`}>{agent.status}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel admin-editor-panel">
+          {selectedAdminAgent ? (
+            <>
+              <div className="panel-header">
+                <div>
+                  <span className="section-kicker">Agent editor</span>
+                  <h2>{selectedAdminAgent.title}</h2>
+                </div>
+                <div className="scenario-actions">
+                  <button className="button secondary" onClick={cycleAgentStatus}>
+                    Cycle status
+                  </button>
+                  <button className="button primary" onClick={() => saveAdminNote(`Saved ${selectedAdminAgent.title} in local browser storage.`)}>
+                    Save changes
+                  </button>
+                </div>
+              </div>
+
+              <div className="admin-section-grid">
+                <article className="info-card admin-kpi-card">
+                  <span className="mini-stat">Assistant mapping</span>
+                  <strong>{selectedAdminAgent.assistantId}</strong>
+                  <p>{selectedAdminAgent.status === 'Live' ? 'Ready for the production-style preset flow.' : 'Staged for testing before promotion.'}</p>
+                </article>
+                <article className="info-card admin-kpi-card">
+                  <span className="mini-stat">Public key status</span>
+                  <strong>{selectedAdminAgent.publicKeyLabel}</strong>
+                  <p>{DEFAULT_PUBLIC_KEY ? 'Environment key detected in the app runtime.' : 'No env key detected in this build, so live calling stays theoretical.'}</p>
+                </article>
+              </div>
+
+              <div className="admin-form-grid">
+                <label>
+                  <span>Opening line</span>
+                  <textarea value={selectedAdminAgent.openingLine} onChange={(event) => handleOpeningLineChange(event.target.value)} rows={4} />
+                </label>
+                <label>
+                  <span>Script notes</span>
+                  <textarea value={selectedAdminAgent.scriptNotes} onChange={(event) => handleScriptNoteChange(event.target.value)} rows={8} />
+                </label>
+              </div>
+
+              <div className="admin-detail-strip">
+                <div className="archive-tags">
+                  <span>{selectedAdminAgent.difficulty}</span>
+                  <span>{selectedAdminAgent.persona}</span>
+                  <span>Edited {formatTimestamp(selectedAdminAgent.lastEditedAt)}</span>
+                </div>
+                <div className="alert muted admin-helper-copy">
+                  Minor edits save to local browser storage only. Nice for demos, terrible as a real audit trail — exactly the kind of thing an admin should distrust on principle.
+                </div>
+                {adminNotice ? <div className="alert">{adminNotice}</div> : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="panel admin-dashboard-panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">Learner dashboard</span>
+            <h2>Overview of coaching activity</h2>
+          </div>
+        </div>
+
+        <div className="score-grid admin-dashboard-grid">
+          <article className="score-card">
+            <span className="score-label">Average empathy</span>
+            <strong>{averageMetrics.empathy}</strong>
+            <span className="score-caption">{archive.length ? metricLabel(averageMetrics.empathy) : 'No sessions yet'}</span>
+          </article>
+          <article className="score-card">
+            <span className="score-label">Average de-escalation</span>
+            <strong>{averageMetrics.deEscalation}</strong>
+            <span className="score-caption">{archive.length ? metricLabel(averageMetrics.deEscalation) : 'No sessions yet'}</span>
+          </article>
+          <article className="score-card">
+            <span className="score-label">Average clarity</span>
+            <strong>{averageMetrics.clarity}</strong>
+            <span className="score-caption">{archive.length ? metricLabel(averageMetrics.clarity) : 'No sessions yet'}</span>
+          </article>
+        </div>
+
+        <div className="admin-section-grid learner-overview-grid">
+          <article className="info-card admin-kpi-card">
+            <span className="mini-stat">Negative flags / session</span>
+            <strong>{averageMetrics.flags}</strong>
+            <p>Calculated from locally archived practice sessions in this browser.</p>
+          </article>
+          <article className="info-card admin-kpi-card">
+            <span className="mini-stat">Latest session snapshot</span>
+            <strong>{latestSession ? formatTimestamp(latestSession.startedAt) : 'Waiting for activity'}</strong>
+            <p>
+              {latestSession
+                ? `${latestSession.insight.positive.length} positive cues and ${latestSession.insight.negative.length} coaching flags.`
+                : 'Run a learner simulation and this panel stops looking so lonely.'}
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+
   const renderScenarioPage = (scenario: ScenarioDefinition) => (
     <section className="simulation-page">
       <div className="panel">
@@ -1005,6 +1396,9 @@ function App() {
               Sign in for future access
             </button>
           )}
+          <button className="button secondary" onClick={() => navigate('/admin/sign-in')}>
+            Open admin console
+          </button>
           <button className="button ghost" onClick={() => navigate('/')}>
             Back to home
           </button>
@@ -1037,11 +1431,19 @@ function App() {
             Scenarios
           </button>
           <button className="nav-link" onClick={() => navigate('/sign-in')}>
-            Sign in
+            Learner sign in
+          </button>
+          <button className="nav-link" onClick={() => navigate('/admin/sign-in')}>
+            Admin
           </button>
           {isSignedIn ? (
             <button className="nav-link strong" onClick={() => navigate('/simulate')}>
               Simulation
+            </button>
+          ) : null}
+          {isAdminSignedIn ? (
+            <button className="nav-link strong" onClick={() => navigate('/admin')}>
+              Console
             </button>
           ) : null}
         </nav>
@@ -1049,7 +1451,9 @@ function App() {
 
       {route === '/' ? renderLandingPage() : null}
       {route === '/sign-in' ? renderSignInPage() : null}
+      {route === '/admin/sign-in' ? renderAdminSignInPage() : null}
       {route === '/simulate' && isSignedIn ? renderSimulationPage() : null}
+      {route === '/admin' && isAdminSignedIn ? renderAdminPage() : null}
       {selectedScenario ? renderScenarioPage(selectedScenario) : null}
     </div>
   )
