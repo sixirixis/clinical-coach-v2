@@ -540,7 +540,8 @@ blockquote {
 .scenario-meta,
 .scenario-actions,
 .archive-session-body,
-.transcript-cues {
+.transcript-cues,
+.learning-goals-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -555,6 +556,26 @@ blockquote {
   padding: 0.45rem 0.7rem;
   border-radius: 999px;
   background: rgba(246, 183, 60, 0.12);
+}
+
+.scenario-page-section-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scenario-detail-card {
+  display: grid;
+  gap: 12px;
+}
+
+.learning-goal-chip {
+  padding: 0.55rem 0.8rem;
+  border-radius: 16px;
+  background: rgba(249, 115, 82, 0.1);
+  color: var(--text-strong);
+  border: 1px solid rgba(249, 115, 82, 0.12);
+  font-weight: 600;
 }
 
 .archive-card.expanded {
@@ -613,7 +634,8 @@ blockquote {
   .feedback-columns,
   .workspace,
   .runtime-strip,
-  .demo-account {
+  .demo-account,
+  .scenario-page-section-grid {
     grid-template-columns: 1fr;
   }
 

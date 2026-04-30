@@ -29,7 +29,9 @@ type ScenarioDefinition = {
   title: string
   strapline: string
   summary: string
-  objective: string
+  learningGoals: string[]
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced'
+  openingLine: string
   persona: string
   availability: ScenarioAvailability
 }
@@ -55,7 +57,13 @@ const SCENARIOS: ScenarioDefinition[] = [
     title: 'Angry family member',
     strapline: 'Live preset scenario',
     summary: 'A distressed family member feels ignored and wants immediate answers. This is the current live simulation in the app.',
-    objective: 'Practice empathy, de-escalation, and a clear plan while keeping the conversation calm.',
+    learningGoals: [
+      'Acknowledge emotion before explaining or correcting',
+      'Lower tension with collaborative language',
+      'End with a clear next-step summary',
+    ],
+    difficulty: 'Intermediate',
+    openingLine: 'I have been standing here for twenty minutes and nobody is telling me what is happening with my father.',
     persona: 'Escalated bedside conversation',
     availability: 'live',
   },
@@ -63,8 +71,14 @@ const SCENARIOS: ScenarioDefinition[] = [
     slug: 'unexpected-diagnosis-anxiety',
     title: 'Unexpected diagnosis anxiety',
     strapline: 'Placeholder voice agent page',
-    summary: 'A patient has just heard unsettling news and keeps looping between fear, questions, and silence.',
-    objective: 'Practice pacing, checking understanding, and acknowledging emotion before adding more information.',
+    summary: 'A patient has just heard unsettling news and keeps cycling between fear, questions, and long pauses.',
+    learningGoals: [
+      'Check what the patient already understands',
+      'Use short, digestible explanations',
+      'Name the emotion before offering more detail',
+    ],
+    difficulty: 'Intermediate',
+    openingLine: 'Wait, are you telling me this could actually be cancer? I do not even know what to ask right now.',
     persona: 'High-emotion disclosure conversation',
     availability: 'placeholder',
   },
@@ -72,8 +86,14 @@ const SCENARIOS: ScenarioDefinition[] = [
     slug: 'discharge-plan-confusion',
     title: 'Discharge plan confusion',
     strapline: 'Placeholder voice agent page',
-    summary: 'A patient is overwhelmed by medications, follow-up instructions, and what happens next after discharge.',
-    objective: 'Practice plain language, teach-back, and summarizing the next steps clearly.',
+    summary: 'A patient is overwhelmed by medications, follow-up instructions, and what happens next after leaving the hospital.',
+    learningGoals: [
+      'Translate instructions into plain language',
+      'Use teach-back to check understanding',
+      'Clarify the next action before ending the conversation',
+    ],
+    difficulty: 'Beginner',
+    openingLine: 'I am sorry, I know you explained it, but I still do not understand which pills I am supposed to take tonight.',
     persona: 'Care-transition communication',
     availability: 'placeholder',
   },
@@ -81,8 +101,14 @@ const SCENARIOS: ScenarioDefinition[] = [
     slug: 'end-of-life-family-meeting',
     title: 'End-of-life family meeting',
     strapline: 'Placeholder voice agent page',
-    summary: 'A family needs a serious update and the conversation requires warmth, clarity, and careful framing.',
-    objective: 'Practice structured difficult-news delivery with compassion and space for emotion.',
+    summary: 'A family needs a serious update and the conversation requires warmth, clarity, and enough space for grief.',
+    learningGoals: [
+      'Set up the conversation with sensitivity and structure',
+      'Deliver serious news without rushing',
+      'Pause and respond to emotion before moving forward',
+    ],
+    difficulty: 'Advanced',
+    openingLine: 'Please just tell me honestly — is my mother dying, and how much time are we really talking about?',
     persona: 'Family meeting under stress',
     availability: 'placeholder',
   },
@@ -90,9 +116,45 @@ const SCENARIOS: ScenarioDefinition[] = [
     slug: 'clinic-scheduling-breakdown',
     title: 'Clinic scheduling breakdown',
     strapline: 'Placeholder voice agent page',
-    summary: 'A caller is frustrated about delays, mixed messages, and an appointment that fell apart somewhere in the system.',
-    objective: 'Practice apology language, ownership, and concrete next-step recovery.',
+    summary: 'A caller is frustrated about delays, mixed messages, and an appointment that seems to have fallen through the cracks.',
+    learningGoals: [
+      'Open with ownership instead of defensiveness',
+      'Separate apology from excuse-making',
+      'Offer a concrete recovery plan',
+    ],
+    difficulty: 'Beginner',
+    openingLine: 'I took time off work for this appointment and now you are telling me nobody even put me on the schedule?',
     persona: 'Operational frustration scenario',
+    availability: 'placeholder',
+  },
+  {
+    slug: 'pain-management-mistrust',
+    title: 'Pain management mistrust',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A patient believes their pain is being underestimated and arrives ready for a fight before the conversation even starts.',
+    learningGoals: [
+      'Reflect the patient’s frustration without sounding defensive',
+      'Separate validation from immediate agreement',
+      'Explain options and limits clearly and respectfully',
+    ],
+    difficulty: 'Advanced',
+    openingLine: 'Every single person here acts like I am exaggerating. You are not listening to how much this hurts.',
+    persona: 'Trust-repair under distress',
+    availability: 'placeholder',
+  },
+  {
+    slug: 'informed-consent-hesitation',
+    title: 'Informed consent hesitation',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A patient is hesitant about a recommended procedure and wants reassurance without feeling pressured into saying yes.',
+    learningGoals: [
+      'Elicit the real concern behind hesitation',
+      'Balance benefits, risks, and uncertainty plainly',
+      'Support patient choice without coercive language',
+    ],
+    difficulty: 'Intermediate',
+    openingLine: 'I hear what you are saying, but I am not comfortable signing this until I understand exactly what could go wrong.',
+    persona: 'Shared decision-making conversation',
     availability: 'placeholder',
   },
 ]
@@ -496,7 +558,7 @@ function App() {
           <p>{scenario.summary}</p>
           <div className="scenario-meta">
             <span>{scenario.persona}</span>
-            <span>{scenario.objective}</span>
+            <span>{scenario.difficulty}</span>
           </div>
           <div className="scenario-actions">
             <button className="button secondary" onClick={() => navigate(getScenarioRoute(scenario.slug))}>
@@ -896,14 +958,36 @@ function App() {
             <strong>{scenario.persona}</strong>
           </article>
           <article className="info-card">
-            <span className="mini-stat">Practice goal</span>
-            <strong>{scenario.objective}</strong>
+            <span className="mini-stat">Difficulty</span>
+            <strong>{scenario.difficulty}</strong>
           </article>
           <article className="info-card">
             <span className="mini-stat">Status</span>
             <strong>{scenario.strapline}</strong>
           </article>
         </div>
+
+        <div className="scenario-page-section-grid">
+          <article className="info-card scenario-detail-card">
+            <span className="mini-stat">Short scenario brief</span>
+            <p>{scenario.summary}</p>
+          </article>
+          <article className="info-card scenario-detail-card">
+            <span className="mini-stat">Sample opening line</span>
+            <blockquote>{scenario.openingLine}</blockquote>
+          </article>
+        </div>
+
+        <article className="info-card scenario-detail-card">
+          <span className="mini-stat">Learning goals</span>
+          <div className="learning-goals-list">
+            {scenario.learningGoals.map((goal) => (
+              <span key={goal} className="learning-goal-chip">
+                {goal}
+              </span>
+            ))}
+          </div>
+        </article>
 
         {scenario.availability === 'placeholder' ? (
           <div className="alert muted">
