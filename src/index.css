@@ -3,27 +3,28 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #163047;
+  color: #4f2d22;
   background:
-    radial-gradient(circle at top left, rgba(82, 137, 255, 0.12), transparent 28%),
-    linear-gradient(180deg, #f5f8ff 0%, #eef4fb 100%);
+    radial-gradient(circle at top left, rgba(255, 183, 120, 0.24), transparent 30%),
+    radial-gradient(circle at top right, rgba(255, 122, 89, 0.14), transparent 24%),
+    linear-gradient(180deg, #fff8ef 0%, #fff1e4 52%, #ffe8dc 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --bg: #eef4fb;
-  --panel-bg: rgba(255, 255, 255, 0.84);
-  --card-bg: rgba(255, 255, 255, 0.92);
-  --input-bg: rgba(255, 255, 255, 0.96);
-  --border: rgba(73, 99, 133, 0.12);
-  --border-strong: rgba(73, 99, 133, 0.24);
-  --accent: #3568ff;
-  --accent-2: #17b69c;
-  --text-strong: #10253b;
-  --text-soft: #48627e;
-  --text-muted: #69809b;
-  --shadow-soft: 0 18px 55px rgba(21, 53, 93, 0.08);
+  --bg: #fff2e6;
+  --panel-bg: rgba(255, 251, 246, 0.9);
+  --card-bg: rgba(255, 255, 252, 0.96);
+  --input-bg: rgba(255, 253, 249, 0.98);
+  --border: rgba(177, 103, 60, 0.14);
+  --border-strong: rgba(177, 103, 60, 0.28);
+  --accent: #f97352;
+  --accent-2: #f6b73c;
+  --text-strong: #4a291f;
+  --text-soft: #7b5747;
+  --text-muted: #a07158;
+  --shadow-soft: 0 22px 60px rgba(163, 91, 43, 0.12);
 }
 
 * {
@@ -90,7 +91,7 @@ p {
 code {
   padding: 0.18rem 0.42rem;
   border-radius: 8px;
-  background: rgba(53, 104, 255, 0.08);
+  background: rgba(249, 115, 82, 0.1);
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -101,20 +102,21 @@ code {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    color: #eff4ff;
+    color: #fff2e8;
     background:
-      radial-gradient(circle at top left, rgba(82, 137, 255, 0.18), transparent 28%),
-      linear-gradient(180deg, #0d1522 0%, #101926 100%);
+      radial-gradient(circle at top left, rgba(246, 183, 60, 0.22), transparent 28%),
+      radial-gradient(circle at top right, rgba(249, 115, 82, 0.18), transparent 24%),
+      linear-gradient(180deg, #2f1d1b 0%, #241614 100%);
 
-    --bg: #0d1522;
-    --panel-bg: rgba(18, 26, 39, 0.84);
-    --card-bg: rgba(19, 29, 45, 0.94);
-    --input-bg: rgba(14, 22, 34, 0.92);
-    --border: rgba(135, 164, 211, 0.14);
-    --border-strong: rgba(135, 164, 211, 0.3);
-    --text-strong: #ecf4ff;
-    --text-soft: #b9c8da;
-    --text-muted: #8ea4be;
-    --shadow-soft: 0 18px 55px rgba(0, 0, 0, 0.28);
+    --bg: #2c1b18;
+    --panel-bg: rgba(50, 31, 27, 0.88);
+    --card-bg: rgba(61, 39, 34, 0.95);
+    --input-bg: rgba(46, 29, 25, 0.96);
+    --border: rgba(255, 194, 140, 0.16);
+    --border-strong: rgba(255, 194, 140, 0.3);
+    --text-strong: #fff4eb;
+    --text-soft: #f0c9b0;
+    --text-muted: #d7aa90;
+    --shadow-soft: 0 18px 55px rgba(0, 0, 0, 0.34);
   }
 }
