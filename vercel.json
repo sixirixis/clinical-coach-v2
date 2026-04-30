@@ -47,13 +47,22 @@
     }
   ],
   "framework": "vite",
-  "routes": [
+  "rewrites": [
     {
-      "handle": "filesystem"
+      "source": "/agents/:path*",
+      "destination": "/index.html"
     },
     {
-      "src": "/.*",
-      "dest": "/index.html"
+      "source": "/archive/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/signin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/simulation",
+      "destination": "/index.html"
     }
   ]
 }
