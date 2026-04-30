@@ -47,10 +47,13 @@
     }
   ],
   "framework": "vite",
-  "rewrites": [
+  "routes": [
     {
-      "source": "/((?!assets/|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest).*)",
-      "destination": "/index.html"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
     }
   ]
 }
