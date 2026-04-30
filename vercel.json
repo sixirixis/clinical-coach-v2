@@ -57,11 +57,19 @@
       "destination": "/index.html"
     },
     {
-      "source": "/signin",
+      "source": "/admin/:path*",
       "destination": "/index.html"
     },
     {
-      "source": "/simulation",
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/sign-in",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/simulate",
       "destination": "/index.html"
     }
   ]
