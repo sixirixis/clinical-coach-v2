@@ -494,6 +494,119 @@ blockquote {
   font-weight: 700;
 }
 
+.scenario-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.scenario-card {
+  display: grid;
+  gap: 14px;
+}
+
+.scenario-header-row,
+.archive-card-header,
+.transcript-role-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.scenario-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scenario-status.live {
+  background: rgba(246, 183, 60, 0.18);
+  color: #9a6205;
+}
+
+.scenario-status.placeholder {
+  background: rgba(180, 134, 98, 0.14);
+  color: var(--text-soft);
+}
+
+.scenario-meta,
+.scenario-actions,
+.archive-session-body,
+.transcript-cues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scenario-meta {
+  color: var(--text-soft);
+  font-size: 0.92rem;
+}
+
+.scenario-meta span {
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(246, 183, 60, 0.12);
+}
+
+.archive-card.expanded {
+  gap: 16px;
+}
+
+.archive-toggle {
+  min-width: 150px;
+}
+
+.archive-session-body {
+  flex-direction: column;
+}
+
+.archive-legend strong {
+  color: var(--text-strong);
+}
+
+.archive-transcript-list {
+  gap: 10px;
+}
+
+.transcript-entry.has-positive {
+  border-color: rgba(246, 183, 60, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(246, 183, 60, 0.12);
+}
+
+.transcript-entry.has-negative {
+  border-color: rgba(220, 76, 100, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(220, 76, 100, 0.1);
+}
+
+.transcript-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.38rem 0.68rem;
+  border-radius: 999px;
+  font-size: 0.79rem;
+  font-weight: 700;
+}
+
+.transcript-cue.positive {
+  background: rgba(246, 183, 60, 0.16);
+  color: #9a6205;
+}
+
+.transcript-cue.negative {
+  background: rgba(220, 76, 100, 0.12);
+  color: #b32846;
+}
+
 @media (max-width: 960px) {
   .card-grid.compact,
   .score-grid,
@@ -512,6 +625,12 @@ blockquote {
 
   .simulation-actions {
     justify-content: start;
+  }
+
+  .archive-card-header,
+  .scenario-header-row,
+  .transcript-role-row {
+    flex-direction: column;
   }
 }
 

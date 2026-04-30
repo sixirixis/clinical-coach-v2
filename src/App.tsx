@@ -5,7 +5,9 @@ import { analyzeTranscript, formatTimestamp, metricLabel, type FeedbackItem, typ
 
 type SessionStatus = 'idle' | 'connecting' | 'active' | 'ended' | 'error'
 type TranscriptRole = TranscriptEntry['role']
-type AppRoute = '/' | '/sign-in' | '/simulate'
+type ScenarioAvailability = 'live' | 'placeholder'
+type ScenarioRoute = `/agents/${string}`
+type AppRoute = '/' | '/sign-in' | '/simulate' | ScenarioRoute
 
 type ArchivedSession = {
   id: string
@@ -22,6 +24,21 @@ type DemoAccount = {
   name: string
 }
 
+type ScenarioDefinition = {
+  slug: string
+  title: string
+  strapline: string
+  summary: string
+  objective: string
+  persona: string
+  availability: ScenarioAvailability
+}
+
+type EntryFeedbackGroup = {
+  positive: FeedbackItem[]
+  negative: FeedbackItem[]
+}
+
 const ARCHIVE_STORAGE_KEY = 'vapi-coaching-archive'
 const AUTH_STORAGE_KEY = 'clinical-coach-auth'
 const DEFAULT_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY ?? ''
@@ -31,6 +48,61 @@ const DEMO_ACCOUNT: DemoAccount = {
   password: 'CoachDemo2026!',
   name: 'Demo Learner',
 }
+
+const SCENARIOS: ScenarioDefinition[] = [
+  {
+    slug: 'angry-family-member',
+    title: 'Angry family member',
+    strapline: 'Live preset scenario',
+    summary: 'A distressed family member feels ignored and wants immediate answers. This is the current live simulation in the app.',
+    objective: 'Practice empathy, de-escalation, and a clear plan while keeping the conversation calm.',
+    persona: 'Escalated bedside conversation',
+    availability: 'live',
+  },
+  {
+    slug: 'unexpected-diagnosis-anxiety',
+    title: 'Unexpected diagnosis anxiety',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A patient has just heard unsettling news and keeps looping between fear, questions, and silence.',
+    objective: 'Practice pacing, checking understanding, and acknowledging emotion before adding more information.',
+    persona: 'High-emotion disclosure conversation',
+    availability: 'placeholder',
+  },
+  {
+    slug: 'discharge-plan-confusion',
+    title: 'Discharge plan confusion',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A patient is overwhelmed by medications, follow-up instructions, and what happens next after discharge.',
+    objective: 'Practice plain language, teach-back, and summarizing the next steps clearly.',
+    persona: 'Care-transition communication',
+    availability: 'placeholder',
+  },
+  {
+    slug: 'end-of-life-family-meeting',
+    title: 'End-of-life family meeting',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A family needs a serious update and the conversation requires warmth, clarity, and careful framing.',
+    objective: 'Practice structured difficult-news delivery with compassion and space for emotion.',
+    persona: 'Family meeting under stress',
+    availability: 'placeholder',
+  },
+  {
+    slug: 'clinic-scheduling-breakdown',
+    title: 'Clinic scheduling breakdown',
+    strapline: 'Placeholder voice agent page',
+    summary: 'A caller is frustrated about delays, mixed messages, and an appointment that fell apart somewhere in the system.',
+    objective: 'Practice apology language, ownership, and concrete next-step recovery.',
+    persona: 'Operational frustration scenario',
+    availability: 'placeholder',
+  },
+]
+
+const EMPTY_ENTRY_FEEDBACK: EntryFeedbackGroup = {
+  positive: [],
+  negative: [],
+}
+
+const getScenarioRoute = (slug: string): ScenarioRoute => `/agents/${slug}`
 
 const getStoredArchive = (): ArchivedSession[] => {
   if (typeof window === 'undefined') return []
@@ -53,6 +125,10 @@ const getStoredUser = () => {
 const getRouteFromPath = (pathname: string): AppRoute => {
   if (pathname.startsWith('/sign-in')) return '/sign-in'
   if (pathname.startsWith('/simulate')) return '/simulate'
+
+  const matchingScenario = SCENARIOS.find((scenario) => pathname.startsWith(getScenarioRoute(scenario.slug)))
+  if (matchingScenario) return getScenarioRoute(matchingScenario.slug)
+
   return '/'
 }
 
@@ -89,6 +165,32 @@ const resolveVapiConstructor = (moduleValue: unknown) => {
     | undefined
 }
 
+const buildEntryFeedbackLookup = (insight: SessionInsight) => {
+  const lookup: Record<string, EntryFeedbackGroup> = {}
+
+  for (const item of insight.positive) {
+    if (!lookup[item.entryId]) {
+      lookup[item.entryId] = { positive: [], negative: [] }
+    }
+    lookup[item.entryId].positive.push(item)
+  }
+
+  for (const item of insight.negative) {
+    if (!lookup[item.entryId]) {
+      lookup[item.entryId] = { positive: [], negative: [] }
+    }
+    lookup[item.entryId].negative.push(item)
+  }
+
+  return lookup
+}
+
+const getSpeakerLabel = (role: TranscriptRole, learnerLabel: string | null) => {
+  if (role === 'user') return learnerLabel ?? DEMO_ACCOUNT.name
+  if (role === 'assistant') return 'Voice agent'
+  return 'System'
+}
+
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname))
   const [signedInUser, setSignedInUser] = useState<string | null>(() => getStoredUser())
@@ -104,6 +206,7 @@ function App() {
   const [lastError, setLastError] = useState('')
   const [startedAt, setStartedAt] = useState<string | null>(null)
   const [archive, setArchive] = useState<ArchivedSession[]>(() => getStoredArchive())
+  const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null)
 
   const vapiRef = useRef<Vapi | null>(null)
   const transcriptRef = useRef<TranscriptEntry[]>([])
@@ -115,6 +218,10 @@ function App() {
   const isSignedIn = Boolean(signedInUser)
   const insight = useMemo(() => analyzeTranscript(transcript), [transcript])
   const totalFlags = insight.positive.length + insight.negative.length
+  const selectedScenario = useMemo(
+    () => SCENARIOS.find((scenario) => route === getScenarioRoute(scenario.slug)) ?? null,
+    [route],
+  )
 
   const navigate = (nextRoute: AppRoute) => {
     window.history.pushState({}, '', nextRoute === '/' ? '/' : nextRoute)
@@ -201,6 +308,7 @@ function App() {
     }
 
     setArchive((current) => [archivedSession, ...current].slice(0, 8))
+    setExpandedArchiveId(archivedSession.id)
   }
 
   const handleVapiMessage = (message: any) => {
@@ -369,14 +477,45 @@ function App() {
     document.getElementById(item.entryId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  const toggleArchiveExpansion = (sessionId: string) => {
+    setExpandedArchiveId((current) => (current === sessionId ? null : sessionId))
+  }
+
+  const renderScenarioLibrary = (currentSlug?: string) => (
+    <div className="scenario-grid">
+      {SCENARIOS.filter((scenario) => scenario.slug !== currentSlug).map((scenario) => (
+        <article key={scenario.slug} className="info-card scenario-card">
+          <div className="scenario-header-row">
+            <div>
+              <span className={`scenario-status ${scenario.availability}`}>
+                {scenario.availability === 'live' ? 'Live now' : 'Placeholder'}
+              </span>
+              <h2>{scenario.title}</h2>
+            </div>
+          </div>
+          <p>{scenario.summary}</p>
+          <div className="scenario-meta">
+            <span>{scenario.persona}</span>
+            <span>{scenario.objective}</span>
+          </div>
+          <div className="scenario-actions">
+            <button className="button secondary" onClick={() => navigate(getScenarioRoute(scenario.slug))}>
+              Open scenario page
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+
   const renderLandingPage = () => (
     <section className="hero-page">
       <div className="hero-panel">
         <span className="eyebrow">Clinical communication training</span>
         <h1>Clinical Communication Trainer</h1>
         <p className="hero-copy">
-          This app is for communications training. Learners sign in, open a preset voice simulation, and review the
-          transcript with coaching feedback after each interaction.
+          This app is for communications training. Learners sign in, open a preset voice simulation, review coaching feedback,
+          and browse upcoming roleplay agents for additional scenarios.
         </p>
         <div className="hero-actions">
           <button className="button primary" onClick={() => navigate('/sign-in')}>
@@ -400,9 +539,19 @@ function App() {
           <p>The voice agent is already configured in the app, so learners do not need to enter any Vapi details.</p>
         </article>
         <article className="info-card">
-          <h2>Who it is for</h2>
-          <p>Healthcare teams practicing difficult conversations, de-escalation, and day-to-day patient communication.</p>
+          <h2>What is next</h2>
+          <p>Additional scenario pages are now stubbed in so the app can grow into a proper roleplay library instead of a one-hit wonder.</p>
         </article>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">Scenario library</span>
+            <h2>Voice agents and placeholder pages</h2>
+          </div>
+        </div>
+        {renderScenarioLibrary()}
       </div>
     </section>
   )
@@ -462,8 +611,7 @@ function App() {
           <span className="eyebrow">Simulation</span>
           <h1>Preset voice session</h1>
           <p className="hero-copy">
-            Signed in as {signedInUser}. The voice agent is preset for this training session, so there is nothing for the
-            learner to configure.
+            Signed in as {signedInUser}. The voice agent is preset for this training session, so there is nothing for the learner to configure.
           </p>
         </div>
         <div className="simulation-actions">
@@ -542,9 +690,7 @@ function App() {
             <div className="transcript-list">
               {transcript.map((entry) => (
                 <article key={entry.id} id={entry.id} className={`transcript-entry role-${entry.role}`}>
-                  <div className="transcript-role">
-                    {entry.role === 'user' ? signedInUser : entry.role === 'assistant' ? 'Voice agent' : 'System'}
-                  </div>
+                  <div className="transcript-role">{getSpeakerLabel(entry.role, signedInUser)}</div>
                   <p>{entry.text}</p>
                   <span className="transcript-time">{formatTimestamp(entry.timestamp)}</span>
                 </article>
@@ -651,25 +797,144 @@ function App() {
 
         {archive.length ? (
           <div className="archive-grid">
-            {archive.map((session) => (
-              <article key={session.id} className="archive-card">
-                <div className="archive-time">{formatTimestamp(session.startedAt)}</div>
-                <h3>{formatDuration(session.durationSeconds)} session</h3>
-                <p>
-                  {session.transcript.length} turns · {session.insight.positive.length} positive cues · {session.insight.negative.length}{' '}
-                  improvement flags
-                </p>
-                <div className="archive-tags">
-                  <span>Empathy {session.insight.metrics.empathy}</span>
-                  <span>De-escalation {session.insight.metrics.deEscalation}</span>
-                  <span>Clarity {session.insight.metrics.clarity}</span>
-                </div>
-              </article>
-            ))}
+            {archive.map((session) => {
+              const isExpanded = expandedArchiveId === session.id
+              const feedbackLookup = buildEntryFeedbackLookup(session.insight)
+
+              return (
+                <article key={session.id} className={`archive-card ${isExpanded ? 'expanded' : ''}`}>
+                  <div className="archive-card-header">
+                    <div>
+                      <div className="archive-time">{formatTimestamp(session.startedAt)}</div>
+                      <h3>{formatDuration(session.durationSeconds)} session</h3>
+                    </div>
+                    <button className="button secondary archive-toggle" onClick={() => toggleArchiveExpansion(session.id)}>
+                      {isExpanded ? 'Hide transcript' : 'Expand transcript'}
+                    </button>
+                  </div>
+
+                  <p>
+                    {session.transcript.length} turns · {session.insight.positive.length} positive cues · {session.insight.negative.length} improvement flags
+                  </p>
+                  <div className="archive-tags">
+                    <span>Empathy {session.insight.metrics.empathy}</span>
+                    <span>De-escalation {session.insight.metrics.deEscalation}</span>
+                    <span>Clarity {session.insight.metrics.clarity}</span>
+                  </div>
+
+                  {isExpanded ? (
+                    <div className="archive-session-body">
+                      <div className="alert muted archive-legend">
+                        <strong>Transcript cues:</strong> warm gold chips mark positive moves, coral chips mark language that needs another look.
+                      </div>
+
+                      <div className="transcript-list archive-transcript-list">
+                        {session.transcript.map((entry) => {
+                          const entryFeedback = feedbackLookup[entry.id] ?? EMPTY_ENTRY_FEEDBACK
+                          const cueClass = entryFeedback.negative.length
+                            ? 'has-negative'
+                            : entryFeedback.positive.length
+                              ? 'has-positive'
+                              : ''
+
+                          return (
+                            <article key={entry.id} className={`transcript-entry role-${entry.role} ${cueClass}`}>
+                              <div className="transcript-role-row">
+                                <div className="transcript-role">{getSpeakerLabel(entry.role, signedInUser)}</div>
+                                <span className="transcript-time">{formatTimestamp(entry.timestamp)}</span>
+                              </div>
+                              <p>{entry.text}</p>
+
+                              {entryFeedback.positive.length || entryFeedback.negative.length ? (
+                                <div className="transcript-cues">
+                                  {entryFeedback.positive.map((item) => (
+                                    <span key={item.id} className="transcript-cue positive" title={item.detail}>
+                                      ✓ {item.title}
+                                    </span>
+                                  ))}
+                                  {entryFeedback.negative.map((item) => (
+                                    <span key={item.id} className="transcript-cue negative" title={item.detail}>
+                                      ⚠ {item.title}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </article>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              )
+            })}
           </div>
         ) : (
           <div className="empty-state">Completed simulations will be archived in this browser for quick debriefing.</div>
         )}
+      </div>
+    </section>
+  )
+
+  const renderScenarioPage = (scenario: ScenarioDefinition) => (
+    <section className="simulation-page">
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">Voice agent scenario</span>
+            <h1>{scenario.title}</h1>
+            <p className="hero-copy">{scenario.summary}</p>
+          </div>
+          <span className={`scenario-status ${scenario.availability}`}>
+            {scenario.availability === 'live' ? 'Live now' : 'Placeholder page'}
+          </span>
+        </div>
+
+        <div className="card-grid compact summary-grid">
+          <article className="info-card">
+            <span className="mini-stat">Persona</span>
+            <strong>{scenario.persona}</strong>
+          </article>
+          <article className="info-card">
+            <span className="mini-stat">Practice goal</span>
+            <strong>{scenario.objective}</strong>
+          </article>
+          <article className="info-card">
+            <span className="mini-stat">Status</span>
+            <strong>{scenario.strapline}</strong>
+          </article>
+        </div>
+
+        {scenario.availability === 'placeholder' ? (
+          <div className="alert muted">
+            This page is intentionally a placeholder so future voice agents can each have their own destination instead of being stuffed into one generic room.
+          </div>
+        ) : null}
+
+        <div className="hero-actions">
+          {scenario.availability === 'live' ? (
+            <button className="button primary" onClick={() => (isSignedIn ? navigate('/simulate') : navigate('/sign-in'))}>
+              {isSignedIn ? 'Open live simulation' : 'Sign in for simulation'}
+            </button>
+          ) : (
+            <button className="button secondary" onClick={() => navigate('/sign-in')}>
+              Sign in for future access
+            </button>
+          )}
+          <button className="button ghost" onClick={() => navigate('/')}>
+            Back to home
+          </button>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">More scenarios</span>
+            <h2>Other roleplay pages</h2>
+          </div>
+        </div>
+        {renderScenarioLibrary(scenario.slug)}
       </div>
     </section>
   )
@@ -683,6 +948,9 @@ function App() {
         <nav className="topbar-actions">
           <button className="nav-link" onClick={() => navigate('/')}>
             Home
+          </button>
+          <button className="nav-link" onClick={() => navigate(getScenarioRoute(SCENARIOS[0].slug))}>
+            Scenarios
           </button>
           <button className="nav-link" onClick={() => navigate('/sign-in')}>
             Sign in
@@ -698,6 +966,7 @@ function App() {
       {route === '/' ? renderLandingPage() : null}
       {route === '/sign-in' ? renderSignInPage() : null}
       {route === '/simulate' && isSignedIn ? renderSimulationPage() : null}
+      {selectedScenario ? renderScenarioPage(selectedScenario) : null}
     </div>
   )
 }
