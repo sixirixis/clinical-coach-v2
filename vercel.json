@@ -50,27 +50,27 @@
   "rewrites": [
     {
       "source": "/agents/:path*",
-      "destination": "/index.html"
+      "destination": "/index"
     },
     {
       "source": "/archive/:path*",
-      "destination": "/index.html"
+      "destination": "/index"
     },
     {
       "source": "/admin/:path*",
-      "destination": "/index.html"
+      "destination": "/index"
     },
     {
       "source": "/admin",
-      "destination": "/index.html"
+      "destination": "/index"
     },
     {
       "source": "/sign-in",
-      "destination": "/index.html"
+      "destination": "/index"
     },
     {
       "source": "/simulate",
-      "destination": "/index.html"
+      "destination": "/index"
     }
   ]
 }
