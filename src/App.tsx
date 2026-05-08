@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import angryRelativeScene from './assets/angry-relative-scene.svg'
+import minorMishapScene from './assets/minor-mishap-scene.svg'
+import schedulingChangeScene from './assets/scheduling-change-scene.svg'
 import { analyzeTranscript, formatTimestamp, metricLabel, type FeedbackItem, type SessionInsight, type TranscriptEntry } from './lib/feedback'
 import { isSupabaseConfigured, getScenarioConfigs, type ScenarioConfig } from './lib/supabase'
 
@@ -52,9 +55,19 @@ const fmtDur = (s: number) =>
 
 const clean = (v: unknown) => typeof v === 'string' ? v.trim() : ''
 
+const SCENARIO_IMAGE_URLS: Record<string, string> = {
+  'angry-relative': angryRelativeScene,
+  'minor-medical-mishap': minorMishapScene,
+  'scheduling-change': schedulingChangeScene,
+}
+
 const resolveVapiConstructor = (m: unknown) => {
-  const c = (m as {default?: unknown})?.default ?? m
-  return typeof c === 'function' ? c as new(k:string) => any : undefined
+  const candidates = [
+    (m as { default?: unknown } | undefined)?.default,
+    (m as { default?: { default?: unknown } } | undefined)?.default?.default,
+    m,
+  ]
+  return candidates.find((candidate) => typeof candidate === 'function') as (new (k: string) => any) | undefined
 }
 
 const speakerLabel = (role: TranscriptEntry['role'], name: string | null) =>
@@ -133,6 +146,7 @@ export const SCENARIOS: Scenario[] = [
 // ─── Route types ───────────────────────────────────────────────────────────────
 
 type Route =
+  | 'landing'
   | 'gallery'
   | 'scenario'
   | 'simulation'
@@ -142,13 +156,15 @@ type Route =
   | 'archive'
 
 function getRoute(pathname: string, scenarioSlug?: string | null): Route {
+  if (pathname === '/' || pathname === '')    return 'landing'
   if (pathname.startsWith('/admin/sign-in'))  return 'admin-sign-in'
   if (pathname.startsWith('/admin'))          return 'admin'
   if (pathname.startsWith('/sign-in'))        return 'sign-in'
-  if (pathname.startsWith('/simulation'))     return 'simulation'
+  if (pathname.startsWith('/gallery'))        return 'gallery'
+  if (pathname.startsWith('/scenario/') && pathname.endsWith('/simulation')) return 'simulation'
   if (pathname.startsWith('/archive'))        return 'archive'
   if (scenarioSlug)                           return 'scenario'
-  return 'gallery'
+  return 'landing'
 }
 
 // ─── App Component ─────────────────────────────────────────────────────────────
@@ -163,7 +179,11 @@ function App() {
     const match = SCENARIOS.find(s => path.startsWith(`/scenario/${s.slug}`))
     return getRoute(path, match?.slug)
   })
-  const [activeScenario, setActiveScenario] = useState<string | null>(null)
+  const [activeScenario, setActiveScenario] = useState<string | null>(() => {
+    const path = window.location.pathname
+    const match = SCENARIOS.find(s => path.startsWith(`/scenario/${s.slug}`))
+    return match?.slug ?? null
+  })
 
   // Auth
   const [user, setUser] = useState<SupabaseUser | null>(() => {
@@ -239,7 +259,7 @@ function App() {
 
   // Auth guard
   useEffect(() => {
-    if (route === 'simulation' && !isSignedIn) navigate('/sign-in')
+    if ((route === 'simulation' || route === 'gallery' || route === 'scenario') && !isSignedIn) navigate('/sign-in')
     if (route === 'admin' && !isAdminSignedIn) navigate('/admin/sign-in')
   }, [isSignedIn, isAdminSignedIn, route])
 
@@ -405,7 +425,7 @@ function App() {
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(u))
       setUser(u)
       setSignErr('')
-      navigate('/simulation')
+      navigate('/gallery')
     }
   }
 
@@ -472,6 +492,39 @@ function App() {
 
   // ─── Pages ──────────────────────────────────────────────────────────────────
 
+  const renderLanding = () => (
+    <div className='landing-wrap'>
+      <section className='landing-hero card'>
+        <div className='landing-copy'>
+          <span className='landing-kicker'>Communication skills simulation</span>
+          <h1>Practice difficult clinical conversations before they happen in real life.</h1>
+          <p>
+            Clinical Coach is a communication training simulation app for healthcare teams. Learners sign in, choose a scenario,
+            run a live voice simulation, and review transcript-based coaching feedback immediately afterwards.
+          </p>
+          <div className='landing-actions'>
+            <button className='btn btn-navy' onClick={() => navigate('/sign-in')}>Learner sign in</button>
+            <button className='btn btn-outline' onClick={() => navigate('/admin/sign-in')}>Admin sign in</button>
+          </div>
+        </div>
+        <div className='landing-highlights'>
+          <div className='landing-highlight'>
+            <strong>3 focused scenarios</strong>
+            <span>Angry relative, minor mishap disclosure, and unforeseen scheduling changes.</span>
+          </div>
+          <div className='landing-highlight'>
+            <strong>Live voice practice</strong>
+            <span>Phone-style HUD with live transcript overlay, mute, start, and end-call controls.</span>
+          </div>
+          <div className='landing-highlight'>
+            <strong>Immediate coaching</strong>
+            <span>Transcript scoring for empathy, de-escalation, and clarity after each call.</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+
   const renderGallery = () => (
     <div className='gallery-wrap'>
       <div className='gallery-hero'>
@@ -480,8 +533,8 @@ function App() {
         <p className='gallery-sub'>Choose a communication scenario below and run a live voice simulation with AI-powered coaching feedback.</p>
         <div className='gallery-hero-actions'>
           {isSignedIn
-            ? <button className='btn btn-navy' onClick={() => navigate('/simulation')}>Go to simulation</button>
-            : <button className='btn btn-navy' onClick={() => navigate('/sign-in')}>Sign in to simulate</button>
+            ? <button className='btn btn-navy' onClick={() => navigate('/gallery')}>Open scenario gallery</button>
+            : <button className='btn btn-navy' onClick={() => navigate('/sign-in')}>Sign in to continue</button>
           }
           <button className='btn btn-outline' onClick={() => navigate('/admin/sign-in')}>Admin access</button>
         </div>
@@ -491,7 +544,7 @@ function App() {
         {SCENARIOS.map(s => (
           <div key={s.slug} className='scenario-card card card-hover' onClick={() => navigate(`/scenario/${s.slug}`)}>
             <div className='scenario-img-wrap'>
-              <img src={`/src/assets/${s.imageKey}-scene.svg`} alt={s.title} className='scenario-img' loading='lazy' />
+              <img src={SCENARIO_IMAGE_URLS[s.imageKey]} alt={s.title} className='scenario-img' loading='lazy' />
               <div className='scenario-overlay'>
                 <span className={`chip chip-${s.status === 'live' ? 'green' : s.status === 'pilot' ? 'amber' : 'slate'}`}>
                   {s.status === 'live' ? '● Live' : s.status === 'pilot' ? '◎ Pilot' : '○ Draft'}
@@ -540,7 +593,7 @@ function App() {
             <div className='detail-hero-actions'>
               {scenario.status === 'live'
                 ? isSignedIn
-                  ? <button className='btn btn-navy' onClick={() => navigate('/simulation')}>Start simulation →</button>
+                  ? <button className='btn btn-navy' onClick={() => navigate(`/scenario/${scenario.slug}/simulation`)}>Start simulation →</button>
                   : <button className='btn btn-navy' onClick={() => navigate('/sign-in')}>Sign in → simulate</button>
                 : <button className='btn btn-outline'>Coming soon — pilot stage</button>
               }
@@ -548,7 +601,7 @@ function App() {
             </div>
           </div>
           <div className='detail-hero-img'>
-            <img src={`/src/assets/${scenario.imageKey}-scene.svg`} alt={scenario.title} />
+            <img src={SCENARIO_IMAGE_URLS[scenario.imageKey]} alt={scenario.title} />
           </div>
         </div>
 
@@ -588,7 +641,7 @@ function App() {
               </span>
               <hr className='divider' />
               {scenario.status === 'live' && isSignedIn && (
-                <button className='btn btn-teal' style={{ width: '100%' }} onClick={() => navigate('/simulation')}>
+                <button className='btn btn-teal' style={{ width: '100%' }} onClick={() => navigate(`/scenario/${scenario.slug}/simulation`)}>
                   ▶ Run simulation
                 </button>
               )}
@@ -609,7 +662,7 @@ function App() {
         <div className='sim-topbar-actions'>
           <div className={`status-badge status-${status}`}>{statusLabel[status]}</div>
           <button className='btn btn-ghost' onClick={handleSignOut}>Sign out</button>
-          <button className='btn btn-outline' onClick={() => navigate('/')}>Gallery</button>
+          <button className='btn btn-outline' onClick={() => navigate('/gallery')}>Gallery</button>
         </div>
       </div>
 
@@ -1039,17 +1092,18 @@ function App() {
       <nav className='navbar'>
         <button className='navbar-brand' onClick={() => navigate('/')}>Clinical Coach</button>
         <div className='navbar-links'>
-          <button className='nav-btn' onClick={() => navigate('/')}>Gallery</button>
+          <button className='nav-btn' onClick={() => navigate('/')}>Home</button>
           <button className='nav-btn' onClick={() => navigate('/sign-in')}>Sign in</button>
           <button className='nav-btn' onClick={() => navigate('/admin/sign-in')}>Admin</button>
           {isSignedIn && (
-            <button className='nav-btn nav-btn-primary' onClick={() => navigate('/simulation')}>Simulate ▶</button>
+            <button className='nav-btn nav-btn-primary' onClick={() => navigate('/gallery')}>Gallery ▶</button>
           )}
         </div>
       </nav>
 
       {/* Page content */}
-      {route === 'gallery'        && renderGallery()}
+      {route === 'landing'        && renderLanding()}
+      {route === 'gallery'        && isSignedIn && renderGallery()}
       {route === 'scenario'       && renderScenarioPage()}
       {route === 'simulation' && isSignedIn && renderSimulationPage()}
       {route === 'sign-in'        && renderSignIn()}
