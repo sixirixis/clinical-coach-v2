@@ -7,16 +7,7 @@ export type TranscriptEntry = {
   timestamp: string
 }
 
-export type FeedbackPillar =
-  | 'empathy'
-  | 'de-escalation'
-  | 'clarity'
-  | 'setting'
-  | 'perception'
-  | 'invitation'
-  | 'knowledge'
-  | 'emotion'
-  | 'summarize'
+export type FeedbackPillar = 'empathy' | 'de-escalation' | 'clarity' | 'ownership' | 'language'
 
 export type FeedbackItem = {
   id: string
@@ -27,272 +18,81 @@ export type FeedbackItem = {
   evidence: string
   entryId: string
   reference: string
-  tag?: 'never-word' | 'spikes'
+  tag?: 'never-word'
 }
 
 export type SessionInsight = {
   positive: FeedbackItem[]
   negative: FeedbackItem[]
-  metrics: {
-    empathy: number
-    deEscalation: number
-    clarity: number
-    spikes: number
-  }
-  spikes: {
-    setting: FeedbackItem | null
-    perception: FeedbackItem | null
-    invitation: FeedbackItem | null
-    knowledge: FeedbackItem | null
-    emotion: FeedbackItem | null
-    summarize: FeedbackItem | null
-  }
+  metrics: { empathy: number; deEscalation: number; clarity: number }
   neverWords: FeedbackItem[]
 }
 
-type PatternDefinition = {
-  title: string
-  detail: string
-  pillar: FeedbackPillar
-  regex: RegExp
-  tag?: 'never-word' | 'spikes'
-  spikesStep?: keyof SessionInsight['spikes']
+type PatternDef = {
+  title: string; detail: string; pillar: FeedbackPillar
+  regex: RegExp; tag?: 'never-word'
 }
 
-const positivePatterns: PatternDefinition[] = [
-  {
-    title: 'Validated emotion',
-    detail: 'The learner acknowledged emotion before pivoting to facts or solutions.',
-    pillar: 'empathy',
-    regex:
-      /\b(i hear how|i can hear how|it sounds like you felt|that sounds frustrating|that sounds upsetting|that is very frustrating|i can see this is hard|i'm sorry this happened|i understand why|am i understanding that correctly)\b/i,
-  },
-  {
-    title: 'Empathetic listening',
-    detail: 'The learner reflected back the concern and checked understanding.',
-    pillar: 'emotion',
-    tag: 'spikes',
-    spikesStep: 'emotion',
-    regex:
-      /\b(it sounds like you felt .* am i understanding that correctly|am i understanding that correctly|help me understand what felt most upsetting|i want to make sure i understand)\b/i,
-  },
-  {
-    title: 'De-escalating collaboration',
-    detail: 'The learner positioned the conversation as something to solve together.',
-    pillar: 'de-escalation',
-    regex:
-      /\b(let'?s work through this|let's figure this out together|we can work on this together|i'm here to help|let's slow this down|we'll take this one step at a time)\b/i,
-  },
-  {
-    title: 'Plain-language explanation',
-    detail: 'The learner used accessible language instead of hiding behind jargon.',
-    pillar: 'knowledge',
-    tag: 'spikes',
-    spikesStep: 'knowledge',
-    regex:
-      /\b(which is why|that means|in plain terms|in other words|to put it simply|we are using .* to help|the infection has spread)\b/i,
-  },
-  {
-    title: 'Clear next-step summary',
-    detail: 'The learner summarized the plan and checked for alignment.',
-    pillar: 'summarize',
-    tag: 'spikes',
-    spikesStep: 'summarize',
-    regex:
-      /\b(to make sure we are on the same page|to make sure we're on the same page|the plan is|i will meet you .* again|does that sound like a plan|here are the next steps)\b/i,
-  },
-  {
-    title: 'Protected the setting',
-    detail: 'The learner created a calmer, more private environment before delivering difficult news.',
-    pillar: 'setting',
-    tag: 'spikes',
-    spikesStep: 'setting',
-    regex:
-      /\b(private room|sit down and talk without being interrupted|somewhere quieter|talk in private|step into this private room)\b/i,
-  },
-  {
-    title: 'Checked perception',
-    detail: 'The learner explored the family member’s understanding before adding new information.',
-    pillar: 'perception',
-    tag: 'spikes',
-    spikesStep: 'perception',
-    regex:
-      /\b(what is your understanding|what's your understanding|what have you been told so far|tell me what you understand|before i share .* what is your understanding)\b/i,
-  },
-  {
-    title: 'Asked for invitation',
-    detail: 'The learner offered choice in how much detail to discuss.',
-    pillar: 'invitation',
-    tag: 'spikes',
-    spikesStep: 'invitation',
-    regex:
-      /\b(would you like me to go over the technical details|would you prefer a general overview|how much detail would you like|would it help if i explain the details now)\b/i,
-  },
-  {
-    title: 'Professional reassurance',
-    detail: 'The learner combined compassion with a clear clinical priority.',
-    pillar: 'clarity',
-    regex:
-      /\b(our priority is making sure .* comfortable|our priority is to keep .* comfortable|we are focused on .* comfort|i want to help and keep you informed)\b/i,
-  },
+const positivePatterns: PatternDef[] = [
+  { title: 'Validated emotion', detail: 'Acknowledged how the person felt before offering facts.', pillar: 'empathy',
+    regex: /\b(i hear you|i understand|that must be|i can see this is|i'm sorry you feel|i appreciate|sounds frustrating|i get it)\b/i },
+  { title: 'De-escalating language', detail: 'Used collaborative phrasing to lower tension.', pillar: 'de-escalation',
+    regex: /\b(let('?s| us) (work|figure|sort|look)|together|i('?m| am) here to help|we can|one step at a time)\b/i },
+  { title: 'Took ownership', detail: 'Accepted responsibility without deflecting.', pillar: 'ownership',
+    regex: /\b(i('?m| am) sorry (for|about|that)|my apolog|that('?s| is) on us|we (should|could) have|i take responsibility)\b/i },
+  { title: 'Plain language explanation', detail: 'Translated clinical information into accessible terms.', pillar: 'clarity',
+    regex: /\b(what that means is|in (plain|simple|other) (terms|words)|to (put it simply|explain)|essentially|basically)\b/i },
+  { title: 'Clear next-step summary', detail: 'Ended with a concrete plan the other person could follow.', pillar: 'clarity',
+    regex: /\b(here('?s| is) what (happens|we('?ll| will))|the next step|what i('?ll| will) do|you can expect|by [a-z]+ (morning|afternoon|tomorrow))\b/i },
 ]
 
-const negativePatterns: PatternDefinition[] = [
-  {
-    title: 'Used a NEVER phrase',
-    detail: 'This wording can sharply escalate distress and should be avoided.',
-    pillar: 'de-escalation',
-    tag: 'never-word',
-    regex:
-      /\b(there is nothing else we can do|there's nothing else we can do|nothing else we can do|why didn't you come in sooner|why did you wait so long|you should have come in sooner)\b/i,
-  },
-  {
-    title: 'Dismissive language',
-    detail: 'The learner minimized the speaker’s emotion instead of acknowledging it.',
-    pillar: 'empathy',
-    regex:
-      /\b(calm down|you're overreacting|it'?s not a big deal|that's not my problem|you need to relax|just listen)\b/i,
-  },
-  {
-    title: 'Policy-first shutdown',
-    detail: 'The learner leaned on rules or dead ends before showing empathy.',
-    pillar: 'de-escalation',
-    regex:
-      /\b(that's our policy|those are the rules|there's nothing i can do|that's just how it is|my hands are tied)\b/i,
-  },
-  {
-    title: 'Blame-oriented framing',
-    detail: 'The learner sounded accusatory, which raises defensiveness fast.',
-    pillar: 'clarity',
-    regex:
-      /\b(you should have|you need to calm down|you have to listen|you didn't|you failed to|why would you)\b/i,
-  },
-  {
-    title: 'Premature closure',
-    detail: 'The conversation was pushed toward an ending before the concern felt heard.',
-    pillar: 'de-escalation',
-    regex:
-      /\b(i already told you|we're done here|end of story|there's nothing else to discuss)\b/i,
-  },
+const negativePatterns: PatternDef[] = [
+  { title: 'Used a NEVER phrase', detail: 'This phrasing sharply escalates distress and should be avoided.',
+    pillar: 'de-escalation', tag: 'never-word',
+    regex: /\b(calm down|there('?s| is) nothing (we|i) can do|why didn('?t| not) you|you should have|it('?s| is) not my (fault|problem)|those are the rules|my hands are tied)\b/i },
+  { title: 'Dismissive response', detail: 'Minimised or brushed off the person\'s concern.',
+    pillar: 'empathy', regex: /\b(you('?re| are) overreacting|it('?s| is) not a big deal|just (wait|be patient|relax)|not my department)\b/i },
+  { title: 'Deflected blame', detail: 'Passed responsibility elsewhere before acknowledging the issue.',
+    pillar: 'ownership', regex: /\b(that('?s| is) (the system|policy|protocol)|talk to (someone else|another|the manager)|not my (job|responsibility)|i just work here)\b/i },
 ]
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, value))
-
-const uniqueById = (items: FeedbackItem[]) => {
-  const seen = new Set<string>()
-  return items.filter((item) => {
-    if (seen.has(item.id)) return false
-    seen.add(item.id)
-    return true
-  })
-}
-
-const buildReference = (entries: TranscriptEntry[], entryId: string) => {
-  const index = entries.findIndex((entry) => entry.id === entryId)
-  return index >= 0 ? `Turn ${index + 1}` : 'Live turn'
-}
+const clamp = (v: number) => Math.max(0, Math.min(100, v))
 
 export const analyzeTranscript = (entries: TranscriptEntry[]): SessionInsight => {
-  const learnerLines = entries.filter((entry) => entry.role === 'user')
+  const learnerLines = entries.filter(e => e.role === 'user')
   const positive: FeedbackItem[] = []
   const negative: FeedbackItem[] = []
-
-  const spikes: SessionInsight['spikes'] = {
-    setting: null,
-    perception: null,
-    invitation: null,
-    knowledge: null,
-    emotion: null,
-    summarize: null,
-  }
+  const seen = new Set<string>()
 
   for (const entry of learnerLines) {
-    const reference = buildReference(entries, entry.id)
-
-    for (const pattern of positivePatterns) {
-      if (!pattern.regex.test(entry.text)) continue
-
-      const item: FeedbackItem = {
-        id: `${pattern.title}-${entry.id}`,
-        title: pattern.title,
-        detail: pattern.detail,
-        polarity: 'positive',
-        pillar: pattern.pillar,
-        evidence: entry.text,
-        entryId: entry.id,
-        reference,
-        tag: pattern.tag,
-      }
-
-      positive.push(item)
-
-      if (pattern.spikesStep && !spikes[pattern.spikesStep]) {
-        spikes[pattern.spikesStep] = item
-      }
+    const ref = `Turn ${entries.findIndex(e => e.id === entry.id) + 1}`
+    for (const p of positivePatterns) {
+      if (!p.regex.test(entry.text)) continue
+      const id = `${p.title}-${entry.id}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      positive.push({ id, title: p.title, detail: p.detail, polarity: 'positive', pillar: p.pillar, evidence: entry.text, entryId: entry.id, reference: ref })
     }
-
-    for (const pattern of negativePatterns) {
-      if (!pattern.regex.test(entry.text)) continue
-
-      negative.push({
-        id: `${pattern.title}-${entry.id}`,
-        title: pattern.title,
-        detail: pattern.detail,
-        polarity: 'negative',
-        pillar: pattern.pillar,
-        evidence: entry.text,
-        entryId: entry.id,
-        reference,
-        tag: pattern.tag,
-      })
+    for (const p of negativePatterns) {
+      if (!p.regex.test(entry.text)) continue
+      const id = `${p.title}-${entry.id}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      negative.push({ id, title: p.title, detail: p.detail, polarity: 'negative', pillar: p.pillar, evidence: entry.text, entryId: entry.id, reference: ref, tag: p.tag })
     }
   }
-
-  const dedupedPositive = uniqueById(positive)
-  const dedupedNegative = uniqueById(negative)
-  const spikesHits = Object.values(spikes).filter(Boolean).length
 
   const metrics = {
-    empathy: clampScore(
-      58 +
-        dedupedPositive.filter((item) => ['empathy', 'emotion'].includes(item.pillar)).length * 12 -
-        dedupedNegative.filter((item) => item.pillar === 'empathy').length * 15,
-    ),
-    deEscalation: clampScore(
-      56 +
-        dedupedPositive.filter((item) => item.pillar === 'de-escalation').length * 13 -
-        dedupedNegative.filter((item) => item.pillar === 'de-escalation').length * 18,
-    ),
-    clarity: clampScore(
-      60 +
-        dedupedPositive.filter((item) => ['clarity', 'knowledge', 'summarize'].includes(item.pillar)).length * 10 -
-        dedupedNegative.filter((item) => item.pillar === 'clarity').length * 14,
-    ),
-    spikes: clampScore(18 + spikesHits * 13),
+    empathy:       clamp(58 + positive.filter(i => i.pillar === 'empathy').length * 12 - negative.filter(i => i.pillar === 'empathy').length * 15),
+    deEscalation:  clamp(56 + positive.filter(i => i.pillar === 'de-escalation').length * 13 - negative.filter(i => i.pillar === 'de-escalation').length * 18),
+    clarity:       clamp(60 + positive.filter(i => ['clarity', 'language'].includes(i.pillar)).length * 10 - negative.filter(i => i.pillar === 'clarity').length * 12),
   }
 
-  return {
-    positive: dedupedPositive,
-    negative: dedupedNegative,
-    metrics,
-    spikes,
-    neverWords: dedupedNegative.filter((item) => item.tag === 'never-word'),
-  }
+  return { positive, negative, metrics, neverWords: negative.filter(i => i.tag === 'never-word') }
 }
 
-export const formatTimestamp = (isoString: string) => {
-  const date = new Date(isoString)
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date)
-}
+export const formatTimestamp = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
 
-export const metricLabel = (value: number) => {
-  if (value >= 85) return 'Strong'
-  if (value >= 70) return 'Solid'
-  if (value >= 55) return 'Developing'
-  return 'Needs work'
-}
+export const metricLabel = (v: number) =>
+  v >= 85 ? 'Excellent' : v >= 70 ? 'Strong' : v >= 55 ? 'Developing' : 'Needs work'
