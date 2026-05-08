@@ -372,7 +372,7 @@ function App() {
   }
 
   const handleError = (err: any) => {
-    setErrMsg(clean(err?.message) || 'Session error.')
+    setErrMsg(`Vapi Error: ${clean(err?.message) || JSON.stringify(err)}`)
     setStatus('error')
   }
 
@@ -447,7 +447,8 @@ function App() {
   // ─── Simulation controls ────────────────────────────────────────────────────
 
   const startSim = async () => {
-    if (!VAPI_PUBLIC_KEY || !VAPI_ASSISTANT_ID) { setErrMsg('Vapi credentials not configured.'); setStatus('error'); return }
+    if (!VAPI_PUBLIC_KEY) { setErrMsg('Missing VITE_VAPI_PUBLIC_KEY'); setStatus('error'); return }
+    if (!VAPI_ASSISTANT_ID) { setErrMsg('Missing VITE_VAPI_ASSISTANT_ID'); setStatus('error'); return }
     archiveFinalRef.current = false
     setStatus('connecting'); setTranscript([]); setPartial({ user:'', assistant:'' })
     setSeconds(0); setVolLevel(0); setMuted(false); setErrMsg('')
