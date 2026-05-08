@@ -1,0 +1,23 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="36" fill="#F8FAFC"/>
+  <rect x="54" y="58" width="1092" height="604" rx="30" fill="url(#bg)"/>
+  <circle cx="920" cy="222" r="150" fill="#99F6E4" opacity="0.28"/>
+  <circle cx="268" cy="498" r="122" fill="#BFDBFE" opacity="0.24"/>
+  <rect x="164" y="144" width="388" height="390" rx="36" fill="#FFFFFF" opacity="0.96"/>
+  <rect x="226" y="214" width="264" height="56" rx="16" fill="#E0F2FE"/>
+  <rect x="226" y="296" width="264" height="22" rx="11" fill="#CBD5E1"/>
+  <rect x="226" y="336" width="224" height="22" rx="11" fill="#CBD5E1"/>
+  <rect x="226" y="388" width="200" height="92" rx="20" fill="#CCFBF1"/>
+  <path d="M694 200C694 182.327 708.327 168 726 168H1002C1019.67 168 1034 182.327 1034 200V346C1034 363.673 1019.67 378 1002 378H726C708.327 378 694 363.673 694 346V200Z" fill="#FFFFFF" opacity="0.94"/>
+  <text x="736" y="242" fill="#0F172A" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="700">I want to explain what happened.</text>
+  <text x="736" y="292" fill="#475569" font-size="24" font-family="Arial, Helvetica, sans-serif">A minor care mishap must be disclosed</text>
+  <text x="736" y="326" fill="#475569" font-size="24" font-family="Arial, Helvetica, sans-serif">plainly, calmly, and without spin.</text>
+  <rect x="650" y="426" width="384" height="116" rx="28" fill="#0F766E"/>
+  <text x="692" y="488" fill="#F0FDFA" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="700">Own it. Explain it. Repair trust.</text>
+  <defs>
+    <linearGradient id="bg" x1="72" y1="86" x2="1088" y2="654" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECFEFF"/>
+      <stop offset="1" stop-color="#F8FAFC"/>
+    </linearGradient>
+  </defs>
+</svg>

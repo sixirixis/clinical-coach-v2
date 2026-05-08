@@ -1,0 +1,23 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="36" fill="#F8FAFC"/>
+  <rect x="54" y="58" width="1092" height="604" rx="30" fill="url(#bg)"/>
+  <circle cx="292" cy="312" r="132" fill="#FCA5A5" opacity="0.28"/>
+  <circle cx="918" cy="228" r="156" fill="#FDE68A" opacity="0.22"/>
+  <rect x="182" y="182" width="340" height="318" rx="36" fill="#FFFFFF" opacity="0.94"/>
+  <path d="M334 289C334 256.863 360.863 230 393 230H418C450.137 230 477 256.863 477 289V319C477 351.137 450.137 378 418 378H393C360.863 378 334 351.137 334 319V289Z" fill="#F87171"/>
+  <path d="M292 480C301.533 411.847 356.454 360 425.27 360H432.73C501.546 360 556.467 411.847 566 480V500H292V480Z" fill="#1E293B" opacity="0.92"/>
+  <rect x="620" y="166" width="346" height="164" rx="26" fill="#FFFFFF" opacity="0.92"/>
+  <text x="662" y="236" fill="#0F172A" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="700">I need answers now.</text>
+  <text x="662" y="286" fill="#475569" font-size="24" font-family="Arial, Helvetica, sans-serif">A tense relative wants clarity and</text>
+  <text x="662" y="320" fill="#475569" font-size="24" font-family="Arial, Helvetica, sans-serif">feels ignored by the team.</text>
+  <rect x="620" y="378" width="420" height="174" rx="28" fill="#10223F"/>
+  <text x="662" y="438" fill="#F8FAFC" font-size="24" font-family="Arial, Helvetica, sans-serif">Training focus</text>
+  <text x="662" y="484" fill="#E2E8F0" font-size="30" font-family="Arial, Helvetica, sans-serif" font-weight="700">De-escalate, validate, and</text>
+  <text x="662" y="524" fill="#E2E8F0" font-size="30" font-family="Arial, Helvetica, sans-serif" font-weight="700">close with a clear next step.</text>
+  <defs>
+    <linearGradient id="bg" x1="92" y1="88" x2="1078" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1F2"/>
+      <stop offset="1" stop-color="#FFF7ED"/>
+    </linearGradient>
+  </defs>
+</svg>

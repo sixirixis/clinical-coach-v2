@@ -1,84 +1,196 @@
 -- ============================================================
 -- Clinical Coach v2 — Supabase Schema
--- Run this in the Supabase SQL editor after creating your project
+-- Communications skill training simulation app
 -- ============================================================
 
--- 1. PROFILES TABLE
--- Stores both learner and admin accounts, linked to Supabase Auth
-CREATE TABLE IF NOT EXISTS profiles (
-  id           UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  email        TEXT UNIQUE NOT NULL,
-  full_name    TEXT NOT NULL DEFAULT '',
-  role         TEXT NOT NULL CHECK (role IN ('learner', 'admin')) DEFAULT 'learner',
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+create extension if not exists pgcrypto;
+
+-- ------------------------------------------------------------
+-- Profiles
+-- ------------------------------------------------------------
+create table if not exists profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text unique not null,
+  full_name text not null default '',
+  role text not null check (role in ('learner', 'admin')) default 'learner',
+  created_at timestamptz not null default now()
 );
 
--- Auto-create a profile row on sign-up
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  INSERT INTO profiles (id, email, full_name, role)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'learner')
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into profiles (id, email, full_name, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    coalesce(new.raw_user_meta_data->>'role', 'learner')
   )
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
+  on conflict (id) do nothing;
+  return new;
+end;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
 
--- 2. CALLS TABLE
--- Logs every Vapi call instance
-CREATE TABLE IF NOT EXISTS calls (
-  id                UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id           UUID        REFERENCES auth.users ON DELETE SET NULL,
-  scenario_slug     TEXT        NOT NULL,
-  vapi_call_id      TEXT        UNIQUE,
-  status            TEXT        NOT NULL DEFAULT 'active',
-  started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  ended_at          TIMESTAMPTZ,
-  duration_seconds  INTEGER,
-  transcript        JSONB       NOT NULL DEFAULT '[]'::jsonb,
-  insight           JSONB       NOT NULL DEFAULT '{}'::jsonb
+-- ------------------------------------------------------------
+-- Scenario configs
+-- ------------------------------------------------------------
+create table if not exists scenario_configs (
+  slug text primary key,
+  title text not null,
+  status text not null check (status in ('live', 'pilot', 'draft')) default 'draft',
+  assistant_id text not null default '',
+  opening_line text not null default '',
+  script_notes text not null default '',
+  image_theme text not null default 'navy',
+  updated_at timestamptz not null default now()
 );
 
--- Index for fast per-user lookups
-CREATE INDEX IF NOT EXISTS calls_user_id_idx ON calls(user_id);
-CREATE INDEX IF NOT EXISTS calls_scenario_idx ON calls(scenario_slug);
+-- ------------------------------------------------------------
+-- Call logs
+-- ------------------------------------------------------------
+create table if not exists calls (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users on delete set null,
+  scenario_slug text not null references scenario_configs(slug) on delete restrict,
+  vapi_call_id text unique,
+  status text not null default 'active',
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  duration_seconds integer,
+  transcript jsonb not null default '[]'::jsonb,
+  insight jsonb not null default '{}'::jsonb
+);
 
--- 3. ROW LEVEL SECURITY
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE calls    ENABLE ROW LEVEL SECURITY;
+create index if not exists calls_user_id_idx on calls(user_id);
+create index if not exists calls_scenario_idx on calls(scenario_slug);
+create index if not exists calls_started_at_idx on calls(started_at desc);
 
--- Profiles: users read/update only their own row
-CREATE POLICY "Users can view own profile"
-  ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update own profile"
-  ON profiles FOR UPDATE USING (auth.uid() = id);
+-- ------------------------------------------------------------
+-- Row level security
+-- ------------------------------------------------------------
+alter table profiles enable row level security;
+alter table scenario_configs enable row level security;
+alter table calls enable row level security;
 
--- Admins can view all profiles
-CREATE POLICY "Admins can view all profiles"
-  ON profiles FOR SELECT USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+-- Safe reruns
+Drop policy if exists "users_select_own_profile" on profiles;
+Drop policy if exists "users_insert_own_profile" on profiles;
+Drop policy if exists "users_update_own_profile" on profiles;
+Drop policy if exists "admins_select_all_profiles" on profiles;
+
+Drop policy if exists "authenticated_select_scenarios" on scenario_configs;
+Drop policy if exists "admins_manage_scenarios" on scenario_configs;
+
+Drop policy if exists "users_select_own_calls" on calls;
+Drop policy if exists "users_insert_own_calls" on calls;
+Drop policy if exists "users_update_own_calls" on calls;
+Drop policy if exists "admins_manage_all_calls" on calls;
+
+create policy "users_select_own_profile"
+  on profiles for select
+  using (auth.uid() = id);
+
+create policy "users_insert_own_profile"
+  on profiles for insert
+  with check (auth.uid() = id);
+
+create policy "users_update_own_profile"
+  on profiles for update
+  using (auth.uid() = id);
+
+create policy "admins_select_all_profiles"
+  on profiles for select
+  using (
+    exists (
+      select 1 from profiles
+      where id = auth.uid() and role = 'admin'
+    )
   );
 
--- Calls: learners see only their own calls
-CREATE POLICY "Users can view own calls"
-  ON calls FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own calls"
-  ON calls FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own calls"
-  ON calls FOR UPDATE USING (auth.uid() = user_id);
+create policy "authenticated_select_scenarios"
+  on scenario_configs for select
+  using (auth.role() = 'authenticated');
 
--- Admins can see everything
-CREATE POLICY "Admins can view all calls"
-  ON calls FOR ALL USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+create policy "admins_manage_scenarios"
+  on scenario_configs for all
+  using (
+    exists (
+      select 1 from profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  )
+  with check (
+    exists (
+      select 1 from profiles
+      where id = auth.uid() and role = 'admin'
+    )
   );
+
+create policy "users_select_own_calls"
+  on calls for select
+  using (auth.uid() = user_id);
+
+create policy "users_insert_own_calls"
+  on calls for insert
+  with check (auth.uid() = user_id);
+
+create policy "users_update_own_calls"
+  on calls for update
+  using (auth.uid() = user_id);
+
+create policy "admins_manage_all_calls"
+  on calls for all
+  using (
+    exists (
+      select 1 from profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  )
+  with check (
+    exists (
+      select 1 from profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+-- ------------------------------------------------------------
+-- Seed the three communication scenarios
+-- ------------------------------------------------------------
+insert into scenario_configs (slug, title, status, assistant_id, opening_line, script_notes, image_theme)
+values
+  (
+    'angry-relative',
+    'Angry patient or relative',
+    'live',
+    '',
+    'I have asked three times already. Why is nobody giving me a straight answer about what is happening?',
+    'Primary skill: validate emotion, lower heat, avoid defensiveness, close with clear next steps.',
+    'coral'
+  ),
+  (
+    'minor-medical-mishap',
+    'Minor medical mishap disclosure',
+    'pilot',
+    '',
+    'Before we go further, I want to explain something that happened during your care today and what we are doing about it.',
+    'Primary skill: disclose plainly, own the issue, apologise without evasion, explain remedial action.',
+    'teal'
+  ),
+  (
+    'scheduling-change',
+    'Unforeseen scheduling change',
+    'pilot',
+    '',
+    'I am sorry, but I need to let you know about an unexpected change to today\'s schedule and help you with the next step.',
+    'Primary skill: apologise early, avoid excuse-stacking, offer concrete recovery options.',
+    'amber'
+  )
+on conflict (slug) do nothing;
