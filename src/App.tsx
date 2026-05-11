@@ -489,7 +489,7 @@ function App() {
 
   // ─── Auth handlers ──────────────────────────────────────────────────────────
 
-  const persistAccountProfile = async (payload: { email: string; fullName: string; role: UserRole }): Promise<SupabaseUser> => {
+  const persistAccountProfile = async (payload: { email: string; password: string; fullName: string; role: UserRole }): Promise<SupabaseUser> => {
     const res = await fetch('/api/account-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -531,6 +531,7 @@ function App() {
     try {
       const u = await persistAccountProfile({
         email: formEmail,
+        password: formPassword,
         role,
         fullName: role === 'admin'
           ? 'Admin Test User'

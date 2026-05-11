@@ -53,6 +53,57 @@ const supabaseRest = async (path, { method = 'GET', body, prefer } = {}) => {
   return data
 }
 
+const authAdminRest = async (path, { method = 'GET', body } = {}) => {
+  const url = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/admin/${path}`
+  const res = await fetch(url, {
+    method,
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  const text = await res.text()
+  let data = null
+  if (text) {
+    try { data = JSON.parse(text) } catch { data = text }
+  }
+
+  if (!res.ok) {
+    const message = data?.msg || data?.message || data?.error_description || data?.error || text || `HTTP ${res.status}`
+    const error = new Error(message)
+    error.status = res.status
+    error.details = data
+    throw error
+  }
+
+  return data
+}
+
+const findAuthUserByEmail = async (email) => {
+  const data = await authAdminRest('users?per_page=100&page=1')
+  const users = Array.isArray(data?.users) ? data.users : []
+  return users.find((candidate) => clean(candidate?.email).toLowerCase() === email) || null
+}
+
+const createAuthUser = async ({ email, password, fullName, role }) => {
+  const data = await authAdminRest('users', {
+    method: 'POST',
+    body: {
+      email,
+      password: clean(password) || `ClinicalCoach-${randomUUID()}!`,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        role,
+      },
+    },
+  })
+  return data?.user || data
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -91,6 +142,20 @@ export default async function handler(req, res) {
     )
 
     const existingProfile = Array.isArray(existing) ? existing[0] : null
+    const authUser = existingProfile?.id
+      ? { id: existingProfile.id }
+      : await findAuthUserByEmail(profilePayload.email)
+        || await createAuthUser({
+          email: profilePayload.email,
+          password: body?.password,
+          fullName: profilePayload.full_name,
+          role: profilePayload.role,
+        })
+
+    if (!authUser?.id) {
+      return json(res, 500, { error: 'Supabase Auth user save returned no id.' })
+    }
+
     const result = existingProfile?.id
       ? await supabaseRest(
           `user_profiles?id=eq.${encodeFilterValue(existingProfile.id)}&select=id,email,full_name,role,created_at,updated_at`,
@@ -108,7 +173,7 @@ export default async function handler(req, res) {
           method: 'POST',
           prefer: 'return=representation',
           body: {
-            id: randomUUID(),
+            id: authUser.id,
             ...profilePayload,
             created_at: now,
             updated_at: now,
