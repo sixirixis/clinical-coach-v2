@@ -83,6 +83,8 @@ const supabaseRest = async (path, { method = 'GET', body, prefer } = {}) => {
   return data
 }
 
+const encodeFilterValue = (value) => encodeURIComponent(String(value).replace(/%/g, '%25'))
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -113,49 +115,46 @@ export default async function handler(req, res) {
 
   const scenarioSlug = clean(body?.scenarioSlug) || 'angry-relative'
   const scenarioTitle = clean(body?.scenarioTitle) || scenarioSlug
-  const vapiCallId = clean(body?.vapiCallId ?? body?.callId) || null
+  const callId = clean(body?.vapiCallId ?? body?.callId) || `client-${Date.now()}`
   const userId = isUuid(body?.userId) ? clean(body.userId) : null
   const startedAt = clean(body?.startedAt) || new Date().toISOString()
   const endedAt = clean(body?.endedAt) || new Date().toISOString()
   const durationSeconds = toIntSeconds(body?.durationSeconds)
-  const insight = body?.insight && typeof body.insight === 'object' ? body.insight : {}
+  const feedback = body?.insight && typeof body.insight === 'object'
+    ? body.insight
+    : body?.feedback && typeof body.feedback === 'object'
+      ? body.feedback
+      : {}
   const status = clean(body?.status) || 'completed'
 
+  const payload = {
+    user_id: userId,
+    call_id: callId,
+    scenario_slug: scenarioSlug,
+    scenario_title: scenarioTitle,
+    status,
+    started_at: startedAt,
+    ended_at: endedAt,
+    duration_seconds: durationSeconds,
+    transcript,
+    feedback,
+  }
+
   try {
-    await supabaseRest('scenario_configs?on_conflict=slug', {
-      method: 'POST',
-      prefer: 'resolution=merge-duplicates',
-      body: {
-        slug: scenarioSlug,
-        title: scenarioTitle,
-        status: 'live',
-        assistant_id: '',
-        opening_line: clean(body?.openingLine),
-        script_notes: 'Auto-created from client-captured transcript save.',
-        image_theme: clean(body?.imageTheme) || 'navy',
-        updated_at: new Date().toISOString(),
-      },
-    })
+    const existing = await supabaseRest(
+      `coaching_sessions?call_id=eq.${encodeFilterValue(callId)}&select=id&limit=1`,
+    )
 
-    const payload = {
-      user_id: userId,
-      scenario_slug: scenarioSlug,
-      vapi_call_id: vapiCallId,
-      status,
-      started_at: startedAt,
-      ended_at: endedAt,
-      duration_seconds: durationSeconds,
-      transcript,
-      insight,
-    }
-
-    const result = vapiCallId
-      ? await supabaseRest(`calls?on_conflict=vapi_call_id&select=id,transcript,duration_seconds,status`, {
-          method: 'POST',
-          prefer: 'resolution=merge-duplicates,return=representation',
-          body: payload,
-        })
-      : await supabaseRest('calls?select=id,transcript,duration_seconds,status', {
+    const result = Array.isArray(existing) && existing.length > 0
+      ? await supabaseRest(
+          `coaching_sessions?call_id=eq.${encodeFilterValue(callId)}&select=id,transcript,duration_seconds,status`,
+          {
+            method: 'PATCH',
+            prefer: 'return=representation',
+            body: payload,
+          },
+        )
+      : await supabaseRest('coaching_sessions?select=id,transcript,duration_seconds,status', {
           method: 'POST',
           prefer: 'return=representation',
           body: payload,
@@ -164,15 +163,15 @@ export default async function handler(req, res) {
     const saved = Array.isArray(result) ? result[0] : result
     if (!saved?.id) {
       return json(res, 500, {
-        error: 'Supabase call save returned no row.',
+        error: 'Supabase transcript save returned no row.',
         details: result,
       })
     }
 
     return json(res, 200, {
       ok: true,
-      callId: saved.id,
-      vapiCallId,
+      sessionId: saved.id,
+      callId,
       transcriptCount: transcript.length,
       durationSeconds: saved.duration_seconds,
       status: saved.status,
