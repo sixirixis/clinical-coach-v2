@@ -137,13 +137,13 @@ export default async function handler(req, res) {
   const now = new Date().toISOString()
 
   try {
-    const existing = await supabaseRest(
+    const existingByEmail = await supabaseRest(
       `user_profiles?email=eq.${encodeFilterValue(profilePayload.email)}&select=id,email,full_name,role,created_at,updated_at&limit=1`,
     )
 
-    const existingProfile = Array.isArray(existing) ? existing[0] : null
-    const authUser = existingProfile?.id
-      ? { id: existingProfile.id }
+    const emailProfile = Array.isArray(existingByEmail) ? existingByEmail[0] : null
+    const authUser = emailProfile?.id
+      ? { id: emailProfile.id }
       : await findAuthUserByEmail(profilePayload.email)
         || await createAuthUser({
           email: profilePayload.email,
@@ -156,6 +156,15 @@ export default async function handler(req, res) {
       return json(res, 500, { error: 'Supabase Auth user save returned no id.' })
     }
 
+    // Supabase projects often have an Auth trigger that creates user_profiles
+    // immediately when an auth user is created. Re-check by Auth UUID before
+    // inserting so sign-in is idempotent and cannot collide on user_profiles_pkey.
+    const existingById = await supabaseRest(
+      `user_profiles?id=eq.${encodeFilterValue(authUser.id)}&select=id,email,full_name,role,created_at,updated_at&limit=1`,
+    )
+    const idProfile = Array.isArray(existingById) ? existingById[0] : null
+    const existingProfile = idProfile || emailProfile
+
     const result = existingProfile?.id
       ? await supabaseRest(
           `user_profiles?id=eq.${encodeFilterValue(existingProfile.id)}&select=id,email,full_name,role,created_at,updated_at`,
@@ -163,6 +172,7 @@ export default async function handler(req, res) {
             method: 'PATCH',
             prefer: 'return=representation',
             body: {
+              email: profilePayload.email,
               full_name: profilePayload.full_name,
               role: profilePayload.role,
               updated_at: now,
