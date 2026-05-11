@@ -199,6 +199,7 @@ function App() {
   const [email, setEmail]   = useState(DEMO_EMAIL)
   const [password, setPass] = useState(DEMO_PASS)
   const [signErr, setSignErr] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
 
   // Admin form
   const [adminEmail, setAdminEmail]   = useState(ADMIN_EMAIL)
@@ -488,37 +489,71 @@ function App() {
 
   // ─── Auth handlers ──────────────────────────────────────────────────────────
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const persistAccountProfile = async (payload: { email: string; fullName: string; role: UserRole }): Promise<SupabaseUser> => {
+    const res = await fetch('/api/account-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || !body?.ok || !body?.profile?.id) {
+      throw new Error(body?.details || body?.error || `Account profile save failed with HTTP ${res.status}`)
+    }
+    return {
+      id: body.profile.id,
+      email: body.profile.email,
+      role: body.profile.role === 'admin' ? 'admin' : 'learner',
+      full_name: body.profile.full_name,
+    }
+  }
+
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    const role = email.trim().toLowerCase() === ADMIN_EMAIL ? 'admin' : 'learner'
+    const isAdminRoute = route === 'admin-sign-in'
+    const role: UserRole = isAdminRoute ? 'admin' : 'learner'
+    const formEmail = (isAdminRoute ? adminEmail : email).trim().toLowerCase()
+    const formPassword = isAdminRoute ? adminPass : password
 
     const ok = role === 'admin'
-      ? (adminEmail.trim().toLowerCase() === ADMIN_EMAIL && adminPass === ADMIN_PASS)
-      : (email.trim().toLowerCase() === DEMO_EMAIL && password === DEMO_PASS)
+      ? (formEmail === ADMIN_EMAIL && formPassword === ADMIN_PASS)
+      : (formEmail.length > 0 && formPassword === DEMO_PASS)
 
     if (!ok) {
       if (role === 'admin') setAdminErr('Use the admin test account shown on this page.')
-      else setSignErr('Use the demo learner account shown on this page.')
+      else setSignErr('Enter a learner email and use the demo password shown on this page.')
       return
     }
 
-    const u: SupabaseUser = {
-      id: role === 'admin' ? 'admin-test-id' : 'learner-test-id',
-      email: role === 'admin' ? ADMIN_EMAIL : DEMO_EMAIL,
-      role: role as UserRole,
-      full_name: role === 'admin' ? 'Admin Test User' : 'Demo Learner',
-    }
+    setAuthBusy(true)
+    if (role === 'admin') setAdminErr('')
+    else setSignErr('')
 
-    if (role === 'admin') {
-      sessionStorage.setItem(ADMIN_KEY, JSON.stringify(u))
-      setAdmin(u)
-      setAdminErr('')
-      navigate('/admin')
-    } else {
-      sessionStorage.setItem(AUTH_KEY, JSON.stringify(u))
-      setUser(u)
-      setSignErr('')
-      navigate('/gallery')
+    try {
+      const u = await persistAccountProfile({
+        email: formEmail,
+        role,
+        fullName: role === 'admin'
+          ? 'Admin Test User'
+          : formEmail === DEMO_EMAIL
+            ? 'Demo Learner'
+            : formEmail.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      })
+
+      if (role === 'admin') {
+        sessionStorage.setItem(ADMIN_KEY, JSON.stringify(u))
+        setAdmin(u)
+        navigate('/admin')
+      } else {
+        sessionStorage.setItem(AUTH_KEY, JSON.stringify(u))
+        setUser(u)
+        navigate('/gallery')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save account profile.'
+      if (role === 'admin') setAdminErr(message)
+      else setSignErr(message)
+    } finally {
+      setAuthBusy(false)
     }
   }
 
@@ -1023,10 +1058,10 @@ function App() {
       <div className='auth-card'>
         <span className='auth-logo'>Clinical Coach — Learner</span>
         <h2>Sign in to simulate</h2>
-        <p>Use the demo account to access the voice training simulations.</p>
+        <p>Enter a learner email and the demo password. A Supabase profile will be created or updated for that email.</p>
         <div className='demo-creds'>
-          <div><span>Email</span><strong>{DEMO_EMAIL}</strong></div>
-          <div><span>Password</span><strong>{DEMO_PASS}</strong></div>
+          <div><span>Example email</span><strong>{DEMO_EMAIL}</strong></div>
+          <div><span>Demo password</span><strong>{DEMO_PASS}</strong></div>
         </div>
         <form className='auth-form' onSubmit={handleSignIn}>
           <div className='field'>
@@ -1038,7 +1073,7 @@ function App() {
             <input className='input' value={password} onChange={e => setPass(e.target.value)} type='password' autoComplete='current-password' />
           </div>
           {signErr && <div className='alert alert-error'>{signErr}</div>}
-          <button className='btn btn-navy' type='submit'>Continue to simulation</button>
+          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Saving account…' : 'Continue to simulation'}</button>
           <button className='btn btn-ghost' type='button' onClick={() => navigate('/')}>Back to gallery</button>
         </form>
       </div>
@@ -1065,7 +1100,7 @@ function App() {
             <input className='input' value={adminPass} onChange={e => setAdminPass(e.target.value)} type='password' autoComplete='current-password' />
           </div>
           {adminErr && <div className='alert alert-error'>{adminErr}</div>}
-          <button className='btn btn-navy' type='submit'>Open admin console</button>
+          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Saving account…' : 'Open admin console'}</button>
           <button className='btn btn-ghost' type='button' onClick={() => navigate('/')}>Back to gallery</button>
         </form>
       </div>
