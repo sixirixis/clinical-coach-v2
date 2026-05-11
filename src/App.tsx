@@ -36,8 +36,8 @@ type UserRole = 'learner' | 'admin'
 
 // ─── Env / Config ─────────────────────────────────────────────────────────────
 
-const VAPI_PUBLIC_KEY    = import.meta.env.VITE_VAPI_PUBLIC_KEY    ?? ''
-const VAPI_ASSISTANT_ID  = import.meta.env.VITE_VAPI_ASSISTANT_ID  ?? ''
+const VAPI_PUBLIC_KEY    = (import.meta.env.VITE_VAPI_PUBLIC_KEY    ?? '').trim()
+const VAPI_ASSISTANT_ID  = (import.meta.env.VITE_VAPI_ASSISTANT_ID  ?? '').trim()
 const DEMO_EMAIL         = 'learner@clinicalcoach.app'
 const DEMO_PASS          = 'CoachDemo2026!'
 const ADMIN_EMAIL        = 'admin@clinicalcoach.app'
