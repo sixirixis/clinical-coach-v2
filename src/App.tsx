@@ -30,6 +30,8 @@ type CallLog = {
   negative: number
 }
 
+type SaveTranscriptStatus = 'idle' | 'saving' | 'saved' | 'error'
+
 type UserRole = 'learner' | 'admin'
 
 // ─── Env / Config ─────────────────────────────────────────────────────────────
@@ -212,6 +214,8 @@ function App() {
   const [volLevel, setVolLevel]       = useState(0)
   const [errMsg, setErrMsg]           = useState('')
   const [startedAt, setStartedAt]     = useState<string | null>(null)
+  const [saveStatus, setSaveStatus]   = useState<SaveTranscriptStatus>('idle')
+  const [saveMsg, setSaveMsg]         = useState('')
 
   // Archive
   const [archive, setArchive] = useState<ArchivedSession[]>(() => {
@@ -227,10 +231,12 @@ function App() {
   // Vapi refs
   const vapiRef         = useRef<any>(null)
   const transcriptRef   = useRef<TranscriptEntry[]>([])
+  const partialRef      = useRef({ user: '', assistant: '' })
   const insightRef      = useRef<SessionInsight>(analyzeTranscript([]))
   const startedAtRef    = useRef<string | null>(null)
   const sessionSecRef   = useRef(0)
   const archiveFinalRef = useRef(false)
+  const currentVapiCallIdRef = useRef<string | null>(null)
 
   // Derived
   const insight   = useMemo(() => analyzeTranscript(transcript), [transcript])
@@ -265,6 +271,7 @@ function App() {
 
   // Sync transcript to ref
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
+  useEffect(() => { partialRef.current = partial }, [partial])
   useEffect(() => { insightRef.current = insight }, [insight])
   useEffect(() => { startedAtRef.current = startedAt }, [startedAt])
   useEffect(() => { sessionSecRef.current = seconds }, [seconds])
@@ -317,6 +324,81 @@ function App() {
     })
   }
 
+  const visibleTranscriptSnapshot = () => {
+    const snap = [...transcriptRef.current]
+    const now = new Date().toISOString()
+    const currentPartial = partialRef.current
+
+    if (currentPartial.assistant.trim()) {
+      snap.push({
+        id: `partial-assistant-${Date.now()}`,
+        role: 'assistant',
+        text: currentPartial.assistant.trim(),
+        timestamp: now,
+      })
+    }
+
+    if (currentPartial.user.trim()) {
+      snap.push({
+        id: `partial-user-${Date.now()}`,
+        role: 'user',
+        text: currentPartial.user.trim(),
+        timestamp: now,
+      })
+    }
+
+    return snap
+  }
+
+  const saveCurrentTranscript = async (reason: 'manual' | 'call-ended' = 'manual') => {
+    const snap = visibleTranscriptSnapshot()
+    if (!snap.length) {
+      setSaveStatus('error')
+      setSaveMsg('No transcript has been captured yet.')
+      return false
+    }
+
+    setSaveStatus('saving')
+    setSaveMsg(reason === 'manual' ? 'Saving visible transcript…' : 'Saving ended call transcript…')
+
+    const endedAt = new Date().toISOString()
+    const payload = {
+      userId: user?.id ?? null,
+      learnerEmail: user?.email ?? null,
+      learnerName: user?.full_name ?? null,
+      scenarioSlug: scenario?.slug ?? activeScenario ?? 'angry-relative',
+      scenarioTitle: scenario?.title ?? 'Simulation',
+      openingLine: scenario?.openingLine ?? '',
+      imageTheme: scenario?.colorTheme ?? 'navy',
+      vapiCallId: currentVapiCallIdRef.current,
+      startedAt: startedAtRef.current ?? endedAt,
+      endedAt,
+      durationSeconds: sessionSecRef.current,
+      status: status === 'active' || status === 'connecting' ? 'active' : 'completed',
+      transcript: snap,
+      insight: insightRef.current,
+    }
+
+    try {
+      const res = await fetch('/api/client-capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body?.ok) {
+        throw new Error(body?.details || body?.error || `Save failed with HTTP ${res.status}`)
+      }
+      setSaveStatus('saved')
+      setSaveMsg(`Saved ${body.transcriptCount ?? snap.length} transcript turns to Supabase.`)
+      return true
+    } catch (err) {
+      setSaveStatus('error')
+      setSaveMsg(err instanceof Error ? err.message : 'Transcript save failed.')
+      return false
+    }
+  }
+
   const finalizeArchive = () => {
     if (archiveFinalRef.current) return
     archiveFinalRef.current = true
@@ -343,9 +425,13 @@ function App() {
       positive: insightRef.current.positive.length,
       negative: insightRef.current.negative.length,
     }, ...prev].slice(0, 50))
+    void saveCurrentTranscript('call-ended')
   }
 
   const handleMessage = (msg: any) => {
+    const maybeCallId = clean(msg?.call?.id ?? msg?.callId ?? msg?.call_id)
+    if (maybeCallId && !currentVapiCallIdRef.current) currentVapiCallIdRef.current = maybeCallId
+
     const t = clean(msg?.type)
     if (t?.startsWith('transcript') || t?.includes('transcript')) {
       const role = (msg?.role === 'assistant' || msg?.role === 'user') ? msg.role : undefined
@@ -450,12 +536,17 @@ function App() {
     if (!VAPI_PUBLIC_KEY) { setErrMsg('Missing VITE_VAPI_PUBLIC_KEY'); setStatus('error'); return }
     if (!VAPI_ASSISTANT_ID) { setErrMsg('Missing VITE_VAPI_ASSISTANT_ID'); setStatus('error'); return }
     archiveFinalRef.current = false
+    currentVapiCallIdRef.current = `client-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+    setSaveStatus('idle')
+    setSaveMsg('')
     setStatus('connecting'); setTranscript([]); setPartial({ user:'', assistant:'' })
     setSeconds(0); setVolLevel(0); setMuted(false); setErrMsg('')
     setStartedAt(new Date().toISOString())
     try {
       const client = await ensureVapi()
-      await client.start(VAPI_ASSISTANT_ID, { variableValues: { learnerName: user?.full_name ?? 'Learner' } })
+      const call = await client.start(VAPI_ASSISTANT_ID, { variableValues: { learnerName: user?.full_name ?? 'Learner' } })
+      const returnedCallId = clean(call?.id ?? call?.call?.id ?? call?.callId)
+      if (returnedCallId) currentVapiCallIdRef.current = returnedCallId
     } catch (err) {
       setErrMsg(err instanceof Error ? err.message : 'Could not start simulation.')
       setStatus('error')
@@ -779,7 +870,16 @@ function App() {
                 disabled={status !== 'active'}>
                 {muted ? '🔇 Unmute' : '🎤 Mute'}
               </button>
+              <button className='btn btn-teal' onClick={() => void saveCurrentTranscript('manual')}
+                disabled={saveStatus === 'saving' || (transcript.length === 0 && !partial.user && !partial.assistant)}>
+                {saveStatus === 'saving' ? 'Saving…' : '💾 Save transcript'}
+              </button>
             </div>
+            {saveMsg && (
+              <div className={`alert ${saveStatus === 'error' ? 'alert-error' : 'alert-success'}`}>
+                {saveMsg}
+              </div>
+            )}
           </div>
 
           {/* Transcript */}
