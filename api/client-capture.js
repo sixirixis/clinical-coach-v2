@@ -142,12 +142,27 @@ export default async function handler(req, res) {
 
   try {
     const existing = await supabaseRest(
-      `coaching_sessions?call_id=eq.${encodeFilterValue(callId)}&select=id&limit=1`,
+      `coaching_sessions?call_id=eq.${encodeFilterValue(callId)}&select=id,scenario_slug,scenario_title,transcript,duration_seconds,status,created_at`,
     )
 
-    const result = Array.isArray(existing) && existing.length > 0
+    const existingRows = Array.isArray(existing) ? existing : []
+    const canonical = existingRows.length
+      ? [...existingRows].sort((a, b) => {
+          const aHasScenario = clean(a?.scenario_slug) || clean(a?.scenario_title) ? 1 : 0
+          const bHasScenario = clean(b?.scenario_slug) || clean(b?.scenario_title) ? 1 : 0
+          if (aHasScenario !== bHasScenario) return bHasScenario - aHasScenario
+
+          const aTurns = Array.isArray(a?.transcript) ? a.transcript.length : 0
+          const bTurns = Array.isArray(b?.transcript) ? b.transcript.length : 0
+          if (aTurns !== bTurns) return bTurns - aTurns
+
+          return clean(a?.created_at).localeCompare(clean(b?.created_at))
+        })[0]
+      : null
+
+    const result = canonical?.id
       ? await supabaseRest(
-          `coaching_sessions?call_id=eq.${encodeFilterValue(callId)}&select=id,transcript,duration_seconds,status`,
+          `coaching_sessions?id=eq.${encodeFilterValue(canonical.id)}&select=id,transcript,duration_seconds,status`,
           {
             method: 'PATCH',
             prefer: 'return=representation',
@@ -168,6 +183,15 @@ export default async function handler(req, res) {
       })
     }
 
+    const duplicateIds = existingRows
+      .map((row) => clean(row?.id))
+      .filter((id) => id && id !== saved.id)
+
+    if (duplicateIds.length) {
+      const inList = duplicateIds.map((id) => `"${String(id).replace(/"/g, '')}"`).join(',')
+      await supabaseRest(`coaching_sessions?id=in.(${inList})`, { method: 'DELETE' })
+    }
+
     return json(res, 200, {
       ok: true,
       sessionId: saved.id,
@@ -175,6 +199,7 @@ export default async function handler(req, res) {
       transcriptCount: transcript.length,
       durationSeconds: saved.duration_seconds,
       status: saved.status,
+      duplicatesRemoved: duplicateIds.length,
     })
   } catch (error) {
     return json(res, 500, {

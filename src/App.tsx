@@ -425,7 +425,14 @@ function App() {
       positive: insightRef.current.positive.length,
       negative: insightRef.current.negative.length,
     }, ...prev].slice(0, 50))
-    void saveCurrentTranscript('call-ended')
+    void saveCurrentTranscript('call-ended').then((saved) => {
+      // Vapi/webhook persistence can arrive a few seconds after the browser save.
+      // Run one delayed idempotent save so /api/client-capture can merge by call_id
+      // and remove any late duplicate rows.
+      if (saved && typeof window !== 'undefined') {
+        window.setTimeout(() => { void saveCurrentTranscript('call-ended') }, 8000)
+      }
+    })
   }
 
   const handleMessage = (msg: any) => {
