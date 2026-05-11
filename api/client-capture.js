@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim()
 const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || '').trim()
 
@@ -49,6 +47,42 @@ const readBody = async (req) => {
   return text ? JSON.parse(text) : {}
 }
 
+const supabaseRest = async (path, { method = 'GET', body, prefer } = {}) => {
+  const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${path}`
+  const headers = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    'Content-Type': 'application/json',
+  }
+  if (prefer) headers.Prefer = prefer
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  const text = await res.text()
+  let data = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = text
+    }
+  }
+
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    const error = new Error(message)
+    error.status = res.status
+    error.details = data
+    throw error
+  }
+
+  return data
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -87,14 +121,11 @@ export default async function handler(req, res) {
   const insight = body?.insight && typeof body.insight === 'object' ? body.insight : {}
   const status = clean(body?.status) || 'completed'
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
   try {
-    await supabase
-      .from('scenario_configs')
-      .upsert({
+    await supabaseRest('scenario_configs?on_conflict=slug', {
+      method: 'POST',
+      prefer: 'resolution=merge-duplicates',
+      body: {
         slug: scenarioSlug,
         title: scenarioTitle,
         status: 'live',
@@ -103,7 +134,8 @@ export default async function handler(req, res) {
         script_notes: 'Auto-created from client-captured transcript save.',
         image_theme: clean(body?.imageTheme) || 'navy',
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'slug', ignoreDuplicates: true })
+      },
+    })
 
     const payload = {
       user_id: userId,
@@ -117,41 +149,40 @@ export default async function handler(req, res) {
       insight,
     }
 
-    let result
-    if (vapiCallId) {
-      result = await supabase
-        .from('calls')
-        .upsert(payload, { onConflict: 'vapi_call_id' })
-        .select('id, transcript, duration_seconds, status')
-        .single()
-    } else {
-      result = await supabase
-        .from('calls')
-        .insert(payload)
-        .select('id, transcript, duration_seconds, status')
-        .single()
-    }
+    const result = vapiCallId
+      ? await supabaseRest(`calls?on_conflict=vapi_call_id&select=id,transcript,duration_seconds,status`, {
+          method: 'POST',
+          prefer: 'resolution=merge-duplicates,return=representation',
+          body: payload,
+        })
+      : await supabaseRest('calls?select=id,transcript,duration_seconds,status', {
+          method: 'POST',
+          prefer: 'return=representation',
+          body: payload,
+        })
 
-    if (result.error) {
+    const saved = Array.isArray(result) ? result[0] : result
+    if (!saved?.id) {
       return json(res, 500, {
-        error: 'Supabase call save failed.',
-        details: result.error.message,
-        code: result.error.code,
+        error: 'Supabase call save returned no row.',
+        details: result,
       })
     }
 
     return json(res, 200, {
       ok: true,
-      callId: result.data?.id,
+      callId: saved.id,
       vapiCallId,
       transcriptCount: transcript.length,
-      durationSeconds: result.data?.duration_seconds,
-      status: result.data?.status,
+      durationSeconds: saved.duration_seconds,
+      status: saved.status,
     })
   } catch (error) {
     return json(res, 500, {
-      error: 'Unexpected transcript capture failure.',
+      error: 'Transcript capture save failed.',
       details: error instanceof Error ? error.message : String(error),
+      supabaseStatus: error?.status,
+      supabaseDetails: error?.details,
     })
   }
 }
