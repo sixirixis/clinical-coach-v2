@@ -38,10 +38,7 @@ type UserRole = 'learner' | 'admin'
 
 const VAPI_PUBLIC_KEY    = (import.meta.env.VITE_VAPI_PUBLIC_KEY    ?? '').trim()
 const VAPI_ASSISTANT_ID  = (import.meta.env.VITE_VAPI_ASSISTANT_ID  ?? '').trim()
-const DEMO_EMAIL         = 'learner@clinicalcoach.app'
-const DEMO_PASS          = 'CoachDemo2026!'
 const ADMIN_EMAIL        = 'admin@clinicalcoach.app'
-const ADMIN_PASS         = 'AdminConsole2026!'
 
 
 // ─── Local storage keys ───────────────────────────────────────────────────────
@@ -73,7 +70,7 @@ const resolveVapiConstructor = (m: unknown) => {
 }
 
 const speakerLabel = (role: TranscriptEntry['role'], name: string | null) =>
-  role === 'user' ? name ?? DEMO_EMAIL : role === 'assistant' ? 'Voice agent' : 'System'
+  role === 'user' ? name ?? 'Learner' : role === 'assistant' ? 'Voice agent' : 'System'
 
 // ─── Scenario definitions ─────────────────────────────────────────────────────
 
@@ -172,6 +169,7 @@ function getRoute(pathname: string, scenarioSlug?: string | null): Route {
 // ─── App Component ─────────────────────────────────────────────────────────────
 
 type SupabaseUser = { id: string; email: string; role: UserRole; full_name: string }
+type AuthMode = 'login' | 'signup'
 
 function App() {
 
@@ -195,15 +193,17 @@ function App() {
     try { const s = sessionStorage.getItem(ADMIN_KEY); return s ? JSON.parse(s) : null } catch { return null }
   })
 
-  // Sign-in form
-  const [email, setEmail]   = useState(DEMO_EMAIL)
-  const [password, setPass] = useState(DEMO_PASS)
+  // Auth form
+  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [email, setEmail]   = useState('')
+  const [password, setPass] = useState('')
+  const [fullName, setFullName] = useState('')
   const [signErr, setSignErr] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
 
   // Admin form
   const [adminEmail, setAdminEmail]   = useState(ADMIN_EMAIL)
-  const [adminPass, setAdminPass]     = useState(ADMIN_PASS)
+  const [adminPass, setAdminPass]     = useState('')
   const [adminErr, setAdminErr]       = useState('')
 
   // Session
@@ -489,7 +489,7 @@ function App() {
 
   // ─── Auth handlers ──────────────────────────────────────────────────────────
 
-  const persistAccountProfile = async (payload: { email: string; password: string; fullName: string; role: UserRole }): Promise<SupabaseUser> => {
+  const authenticateAccount = async (payload: { action: AuthMode; email: string; password: string; fullName?: string; role: UserRole }): Promise<SupabaseUser> => {
     const res = await fetch('/api/account-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -497,7 +497,7 @@ function App() {
     })
     const body = await res.json().catch(() => ({}))
     if (!res.ok || !body?.ok || !body?.profile?.id) {
-      throw new Error(body?.details || body?.error || `Account profile save failed with HTTP ${res.status}`)
+      throw new Error(body?.details || body?.error || `Account auth failed with HTTP ${res.status}`)
     }
     return {
       id: body.profile.id,
@@ -511,33 +511,24 @@ function App() {
     e.preventDefault()
     const isAdminRoute = route === 'admin-sign-in'
     const role: UserRole = isAdminRoute ? 'admin' : 'learner'
+    const action: AuthMode = isAdminRoute ? 'login' : authMode
     const formEmail = (isAdminRoute ? adminEmail : email).trim().toLowerCase()
     const formPassword = isAdminRoute ? adminPass : password
-
-    const ok = role === 'admin'
-      ? (formEmail === ADMIN_EMAIL && formPassword === ADMIN_PASS)
-      : (formEmail.length > 0 && formPassword === DEMO_PASS)
-
-    if (!ok) {
-      if (role === 'admin') setAdminErr('Use the admin test account shown on this page.')
-      else setSignErr('Enter a learner email and use the demo password shown on this page.')
-      return
-    }
+    const formFullName = fullName.trim()
 
     setAuthBusy(true)
     if (role === 'admin') setAdminErr('')
     else setSignErr('')
 
     try {
-      const u = await persistAccountProfile({
+      const u = await authenticateAccount({
+        action,
         email: formEmail,
         password: formPassword,
         role,
-        fullName: role === 'admin'
-          ? 'Admin Test User'
-          : formEmail === DEMO_EMAIL
-            ? 'Demo Learner'
-            : formEmail.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        fullName: action === 'signup'
+          ? formFullName
+          : undefined,
       })
 
       if (role === 'admin') {
@@ -550,7 +541,7 @@ function App() {
         navigate('/gallery')
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not save account profile.'
+      const message = error instanceof Error ? error.message : 'Could not authenticate account.'
       if (role === 'admin') setAdminErr(message)
       else setSignErr(message)
     } finally {
@@ -1058,23 +1049,46 @@ function App() {
     <div className='auth-page'>
       <div className='auth-card'>
         <span className='auth-logo'>Clinical Coach — Learner</span>
-        <h2>Sign in to simulate</h2>
-        <p>Enter a learner email and the demo password. A Supabase profile will be created or updated for that email.</p>
-        <div className='demo-creds'>
-          <div><span>Example email</span><strong>{DEMO_EMAIL}</strong></div>
-          <div><span>Demo password</span><strong>{DEMO_PASS}</strong></div>
+        <h2>{authMode === 'signup' ? 'Create your account' : 'Log in to continue'}</h2>
+        <p>
+          {authMode === 'signup'
+            ? 'Create a learner account. You can start immediately — no email verification step is required.'
+            : 'Log in with the email and password you used when creating your Clinical Coach account.'}
+        </p>
+        <div className='auth-switch' role='tablist' aria-label='Account action'>
+          <button
+            className={`auth-switch-btn ${authMode === 'login' ? 'active' : ''}`}
+            type='button'
+            onClick={() => { setAuthMode('login'); setSignErr('') }}>
+            Log in
+          </button>
+          <button
+            className={`auth-switch-btn ${authMode === 'signup' ? 'active' : ''}`}
+            type='button'
+            onClick={() => { setAuthMode('signup'); setSignErr('') }}>
+            Sign up
+          </button>
         </div>
         <form className='auth-form' onSubmit={handleSignIn}>
+          {authMode === 'signup' && (
+            <div className='field'>
+              <label>Full name</label>
+              <input className='input' value={fullName} onChange={e => setFullName(e.target.value)} type='text' autoComplete='name' placeholder='e.g. New Learner' />
+            </div>
+          )}
           <div className='field'>
             <label>Email</label>
-            <input className='input' value={email} onChange={e => setEmail(e.target.value)} type='email' autoComplete='username' />
+            <input className='input' value={email} onChange={e => setEmail(e.target.value)} type='email' autoComplete='username' placeholder='you@example.com' required />
           </div>
           <div className='field'>
             <label>Password</label>
-            <input className='input' value={password} onChange={e => setPass(e.target.value)} type='password' autoComplete='current-password' />
+            <input className='input' value={password} onChange={e => setPass(e.target.value)} type='password' autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} placeholder={authMode === 'signup' ? 'At least 8 characters' : 'Your password'} required />
           </div>
+          {authMode === 'signup' && (
+            <div className='auth-note'>Email verification is disabled for this app, so successful signups are available immediately.</div>
+          )}
           {signErr && <div className='alert alert-error'>{signErr}</div>}
-          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Saving account…' : 'Continue to simulation'}</button>
+          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Please wait…' : authMode === 'signup' ? 'Create account' : 'Log in'}</button>
           <button className='btn btn-ghost' type='button' onClick={() => navigate('/')}>Back to gallery</button>
         </form>
       </div>
@@ -1086,11 +1100,7 @@ function App() {
       <div className='auth-card'>
         <span className='auth-logo'>Clinical Coach — Admin</span>
         <h2>Voice agent control room</h2>
-        <p>Use the admin test account to manage scenarios and review call logs.</p>
-        <div className='demo-creds'>
-          <div><span>Email</span><strong>{ADMIN_EMAIL}</strong></div>
-          <div><span>Password</span><strong>{ADMIN_PASS}</strong></div>
-        </div>
+        <p>Log in with an admin account to manage scenarios and review call logs.</p>
         <form className='auth-form' onSubmit={handleSignIn}>
           <div className='field'>
             <label>Email</label>
@@ -1101,7 +1111,7 @@ function App() {
             <input className='input' value={adminPass} onChange={e => setAdminPass(e.target.value)} type='password' autoComplete='current-password' />
           </div>
           {adminErr && <div className='alert alert-error'>{adminErr}</div>}
-          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Saving account…' : 'Open admin console'}</button>
+          <button className='btn btn-navy' type='submit' disabled={authBusy}>{authBusy ? 'Please wait…' : 'Log in to admin console'}</button>
           <button className='btn btn-ghost' type='button' onClick={() => navigate('/')}>Back to gallery</button>
         </form>
       </div>

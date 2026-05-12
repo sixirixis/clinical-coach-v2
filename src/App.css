@@ -783,6 +783,44 @@
   margin-bottom: 1.25rem;
 }
 
+.auth-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .35rem;
+  padding: .35rem;
+  background: var(--slate-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.25rem;
+}
+
+.auth-switch-btn {
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 4px);
+  padding: .7rem .9rem;
+  background: transparent;
+  color: var(--slate);
+  font-weight: 800;
+  cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+
+.auth-switch-btn.active {
+  background: #fff;
+  color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-note {
+  font-size: .82rem;
+  line-height: 1.45;
+  color: var(--slate);
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  border-radius: var(--radius-sm);
+  padding: .8rem 1rem;
+}
+
 .demo-creds {
   display: grid;
   grid-template-columns: 1fr 1fr;
